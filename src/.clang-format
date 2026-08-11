@@ -1,0 +1,13 @@
+BasedOnStyle: Google
+IndentWidth: 2
+UseTab: Never
+ColumnLimit: 100
+AccessModifierOffset: -2
+NamespaceIndentation: All
+AlignAfterOpenBracket: Align
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+MaxEmptyLinesToKeep: 1
+SpacesBeforeTrailingComments: 2
+PointerAlignment: Left
+BreakBeforeBraces: Attach
