@@ -16,6 +16,8 @@
   - [spatial_simplify](commands/vector.md#spatial_simplify)
   - [spatial_union](commands/vector.md#spatial_union)
   - [spatial_merge_vector](commands/vector.md#spatial_merge_vector)
+  - [spatial_validate](commands/vector.md#spatial_validate)
+  - [spatial_calc_vector](commands/vector.md#spatial_calc_vector)
 
 - Raster Processing
   - [spatial_calc](commands/raster.md#spatial_calc)
@@ -25,6 +27,11 @@
   - [spatial_rasterize](commands/raster.md#spatial_rasterize)
   - [spatial_vectorize](commands/raster.md#spatial_vectorize)
   - [spatial_resample](commands/raster.md#spatial_resample)
+  - [spatial_reclass](commands/raster.md#spatial_reclass)
+  - [spatial_rat](commands/raster.md#spatial_rat)
+  - [spatial_terrain ⚠️](commands/raster.md#spatial_terrain)
+  - [spatial_hydrology ⚠️](commands/raster.md#spatial_hydrology)
+  - [spatial_cost ⚠️](commands/raster.md#spatial_cost)
 
 - Spatial Queries & Analysis
   - [spatial_query](commands/analysis.md#spatial_query)
@@ -43,8 +50,16 @@
   - [spatial_lrs_create](commands/network.md#spatial_lrs_create)
   - [spatial_lrs_locate](commands/network.md#spatial_lrs_locate)
   - [spatial_lrs_segment](commands/network.md#spatial_lrs_segment)
+  - [spatial_lrs_info ⚠️](commands/network.md#spatial_lrs_info)
+  - [spatial_network_info ⚠️](commands/network.md#spatial_network_info)
+  - [spatial_network_service ⚠️](commands/network.md#spatial_network_service)
+  - [spatial_address_validate ⚠️](commands/network.md#spatial_address_validate)
+  - [spatial_reverse_geocode ⚠️](commands/network.md#spatial_reverse_geocode)
 
 - Cartography & Visualization
   - [spatial_colormap](commands/cartography.md#spatial_colormap)
   - [spatial_svg](commands/cartography.md#spatial_svg)
   - [spatial_viewer](commands/cartography.md#spatial_viewer)
+
+- Coordinate Reference Systems
+  - [spatial_reproject ⚠️](commands/projection.md#spatial_reproject)

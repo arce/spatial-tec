@@ -240,3 +240,79 @@ spatial_merge_vector c1.csv c2.csv c3.csv merged.csv -auto_attrs
 **SEE ALSO**
 
 [spatial_merge_raster](raster.md#spatial_merge_raster)
+
+---
+
+## spatial_validate
+
+**NAME**
+
+`spatial_validate` — valida (y opcionalmente repara) la geometría de un conjunto de datos vectoriales
+
+**SYNOPSIS**
+
+```
+spatial_validate <input> <output> [options]
+```
+
+**DESCRIPTION**
+
+Sin una librería de geometría completa (GEOS) disponible, revisa cada parte (anillo/línea/punto) de cada feature con un conjunto acotado pero real de comprobaciones: geometría vacía, muy pocos vértices, vértices duplicados consecutivos, anillos no cerrados, auto-intersecciones (cruces tipo "X" entre segmentos no adyacentes) y orientación de anillos (se espera sentido antihorario/CCW). La detección de auto-intersección no cubre traslapes colineales (dos segmentos superpuestos sobre la misma recta).
+
+El archivo de salida siempre se escribe: idéntico a la entrada si no se pasó `-fix`, o con las reparaciones aplicadas si se pasó. Sin `-fix`, los problemas se reportan pero la geometría no se modifica. De los problemas detectados, `unclosed_ring`, `duplicate_vertex` y `cw_orientation` son reparables con `-fix`; `empty_geometry`, `too_few_vertices` y `self_intersection` no lo son (solo se reportan).
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-fix` | Intentar reparar geometrías inválidas (cierra anillos, elimina vértices duplicados consecutivos, invierte anillos en sentido horario) |
+| `-report <file>` | Guardar un reporte CSV de los problemas encontrados (columnas: `feature_id,geometry_type,part,issue,severity,fixed,message`) |
+
+**EXAMPLES**
+
+```
+spatial_validate parcels.csv parcels_valid.csv -fix -report errors.csv
+spatial_validate parcels.csv parcels_checked.csv -report errors.csv
+```
+
+**SEE ALSO**
+
+[spatial_simplify](#spatial_simplify), [spatial_union](#spatial_union)
+
+---
+
+## spatial_calc_vector
+
+**NAME**
+
+`spatial_calc_vector` — calcula o transforma columnas de atributos de un CSV vectorial mediante una expresión
+
+**SYNOPSIS**
+
+```
+spatial_calc_vector <input.csv> <output.csv> -column <name> -expression <expr> [options]
+```
+
+**DESCRIPTION**
+
+Contraparte vectorial de [`spatial_calc`](raster.md#spatial_calc) (que es exclusivamente para ráster): en vez de operar celda por celda sobre uno o más rásteres, evalúa la expresión dada fila por fila sobre las columnas de atributos de un CSV vectorial, escribiendo el resultado en una columna nueva (insertada justo antes de la columna de geometría) o sobrescribiendo una existente.
+
+La expresión admite `+ - * / ^`, comparaciones (`> < >= <= == !=`), el operador ternario `condición ? si : no`, paréntesis, negación unaria y las funciones `sqrt abs sin cos tan log log10 exp pow min max`. Cualquier identificador que no sea el nombre de una función se interpreta como el nombre de una columna de atributos del CSV de entrada; si la expresión referencia una columna inexistente, el comando falla con un error antes de procesar ninguna fila.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-column <name>` | Columna a crear o sobrescribir (**requerido**) |
+| `-expression <expr>` | Expresión a evaluar por fila (**requerido**) |
+
+**EXAMPLES**
+
+```
+spatial_calc_vector cities.csv cities_out.csv -column density -expression "population / area"
+spatial_calc_vector cities.csv cities_out.csv -column tier -expression "population > 1000000 ? 1 : 0"
+```
+
+**SEE ALSO**
+
+[spatial_calc](raster.md#spatial_calc), [spatial_filter_vector](analysis.md#spatial_filter_vector)

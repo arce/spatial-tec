@@ -95,10 +95,7 @@ std::string coordinatesToGeoJSON(const Spatial::VectorFeature& feature, const st
     }
     result += "]]";
   } else if (geom_type == "MULTIPOINT") {
-    // GeoJSON MultiPoint coordinates are an array of positions -- same
-    // shape as LineString. feature.part_starts (see spatial_types.hpp)
-    // gives the real per-point boundaries recorded by SpatialCSVReader, so
-    // this no longer needs to guess -- it just walks each part in order.
+
     result = "[";
     bool first = true;
     for (const auto& range : featurePartRanges(feature)) {
@@ -110,8 +107,7 @@ std::string coordinatesToGeoJSON(const Spatial::VectorFeature& feature, const st
     }
     result += "]";
   } else if (geom_type == "MULTILINESTRING") {
-    // MultiLineString coordinates are an array of LineString-shaped arrays
-    // (one more nesting level than LineString): one entry per real part.
+
     result = "[";
     bool first_part = true;
     for (const auto& range : featurePartRanges(feature)) {
@@ -128,11 +124,7 @@ std::string coordinatesToGeoJSON(const Spatial::VectorFeature& feature, const st
     }
     result += "]";
   } else if (geom_type == "MULTIPOLYGON") {
-    // MultiPolygon coordinates are an array of Polygon-shaped arrays (one
-    // more nesting level than Polygon): one entry per real part. A part's
-    // own holes still get merged into one outward ring, same as a plain
-    // POLYGON already does -- only the separation between *parts* (the
-    // actual islands) is tracked.
+
     result = "[";
     bool first_part = true;
     for (const auto& range : featurePartRanges(feature)) {
@@ -388,3 +380,4 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
+

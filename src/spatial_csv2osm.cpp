@@ -239,14 +239,7 @@ int main(int argc, char* argv[]) {
     if (feature.type == Spatial::VectorFeature::GeometryType::MULTIPOINT ||
         feature.type == Spatial::VectorFeature::GeometryType::MULTILINESTRING ||
         feature.type == Spatial::VectorFeature::GeometryType::MULTIPOLYGON) {
-      // OSM XML has no node/way primitive for a multi-part geometry (that
-      // needs a hand-built <relation>, which this tool does not attempt).
-      // The CSV's flat coordinate list also no longer records where one
-      // part ends and the next begins, so there's no safe way to guess at
-      // a single way/node without silently fabricating the wrong shape.
-      // Skip explicitly (with a reason) rather than emit misleading OSM
-      // geometry -- previously this fell through to the way-handling code
-      // below and got written out as if it were one ordinary line/polygon.
+
       std::cerr << "Skipping feature with multi-part geometry (MultiPoint/MultiLineString/"
                    "MultiPolygon) -- OSM XML has no node/way equivalent for it without a "
                    "hand-built relation, which this tool does not create.\n";
@@ -429,3 +422,4 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
+

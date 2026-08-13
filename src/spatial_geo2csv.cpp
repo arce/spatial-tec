@@ -105,13 +105,6 @@ std::string coordinatesToWKT(const json& coordinates, const std::string& type) {
   return wkt;
 }
 
-// Reserved/structural column names can collide with a real GeoJSON property
-// of the same name (e.g. a feature that already has an "id" or "geometry"
-// property). When that happens the CSV would end up with two columns
-// sharing one name, and SpatialCSVReader collapses same-named columns into
-// a single attribute on read -- silently discarding whichever one it saw
-// first. To avoid that, the structural column is renamed (never the user's
-// real property) until it no longer collides.
 std::string uniqueReservedName(const std::string& desired, const std::set<std::string>& taken) {
   if (taken.find(desired) == taken.end()) {
     return desired;
@@ -169,10 +162,7 @@ void writeCSVRow(std::ofstream& file, const std::string& id, const json& propert
       } else if (value.is_number_integer()) {
         file << value.get<int>();
       } else if (value.is_number_float()) {
-        // max_digits10 (17 for double) is the number of significant digits
-        // needed to round-trip a double exactly; the previous fixed 6
-        // decimals silently truncated attribute values like population
-        // density or measurement fields, not just geometry coordinates.
+
         std::ostringstream oss;
         oss << std::setprecision(std::numeric_limits<double>::max_digits10) << value.get<double>();
         file << oss.str();
@@ -261,9 +251,6 @@ void convertGeoJSONToCSV(const std::string& input_file, const std::string& outpu
     }
   }
 
-  // The reserved/structural columns ("id" for the feature identifier, plus
-  // optionally "geometry_type" and "geometry") must not collide with a real
-  // property name -- see uniqueReservedName() for why.
   std::string id_col = uniqueReservedName("id", property_names);
   std::string type_col = include_type ? uniqueReservedName("geometry_type", property_names) : "";
   std::string geom_col = include_geometry ? uniqueReservedName("geometry", property_names) : "";
@@ -304,10 +291,6 @@ void convertGeoJSONToCSV(const std::string& input_file, const std::string& outpu
       props = feature["properties"];
     }
 
-    // GeoJSON Features may carry a top-level "id" member (RFC 7946 §3.2),
-    // separate from "properties". Previously this was ignored entirely and
-    // replaced by a throwaway sequential counter. Preserve it when present;
-    // fall back to the sequential counter only when the feature has none.
     std::string row_id;
     if (feature.contains("id") && !feature["id"].is_null()) {
       const auto& fid = feature["id"];
@@ -399,3 +382,4 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
+

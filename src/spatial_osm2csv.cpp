@@ -56,12 +56,6 @@ std::string escapeCSV(const std::string& value) {
   return value;
 }
 
-// Reserved/structural column names ("id", "type", "geometry") can collide
-// with a real OSM tag of the same name -- "type" is extremely common on
-// relations (type=multipolygon, type=route, ...). When that happens the
-// structural column is renamed (never the tag) so the tag value keeps
-// showing up as data instead of being silently shadowed by the id/type/wkt
-// column of the same name.
 std::string uniqueReservedName(const std::string& desired, const std::set<std::string>& taken) {
   if (taken.find(desired) == taken.end()) {
     return desired;
@@ -244,13 +238,7 @@ OSMData parseOSM(const std::string& filename) {
          member = member.next_sibling("member")) {
       std::string type = member.attribute("type").as_string();
       long long ref = member.attribute("ref").as_llong();
-      // Store the member's element type ("way"/"node"/"relation"), not its
-      // role ("outer"/"inner"/...) -- detectLayers()/main() below match on
-      // `member.first == "way"` to find a way to approximate the
-      // relation's geometry from. Storing role here made that comparison
-      // always false (role is virtually never literally "way"), so every
-      // relation silently got dropped (wkt stayed empty -> `if (wkt.empty())
-      // continue;`), taking its tags with it.
+
       r.members.push_back({type, ref});
     }
 
@@ -501,11 +489,6 @@ void writeLayerCSV(const LayerInfo& layer, const std::string& output_dir,
     return;
   }
 
-  // Auto-detect every tag key that has a non-empty value on at least one
-  // feature in this layer, mirroring how spatial_geo2csv auto-unions
-  // GeoJSON property names. Previously the default column set was just
-  // id/type/geometry, so every tag was silently dropped unless the caller
-  // already knew every key in advance and passed -columns explicitly.
   std::set<std::string> tag_keys;
   for (const auto& feature : layer.features) {
     for (const auto& [k, v] : feature.tags) {
@@ -725,12 +708,6 @@ int main(int argc, char* argv[]) {
   if (split_mode.empty()) {
     std::cout << "Writing single file...\n";
 
-    // Pre-pass: collect every tag key with a non-empty value on at least
-    // one selected node/way/relation (respecting -filter/-types), so the
-    // default output includes all real attribute data instead of just
-    // id/type/geometry. This also gives uniqueReservedName() the full tag
-    // key set up front so id/type/geometry can be renamed if a tag (very
-    // commonly "type", e.g. type=multipolygon on relations) collides.
     std::set<std::string> tag_keys;
     for (const auto& [id, node] : data.nodes) {
       if (!types.empty() && types.find("node") == types.end())
@@ -889,3 +866,4 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
+

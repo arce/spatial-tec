@@ -5,7 +5,7 @@ A collection of C++17 command-line utilities for spatial (vector and raster) dat
 ## Requirements
 
 - `g++` (Linux/macOS) with C++17 support, or `mingw-w64` for cross-compiling to Windows
-- The 34 command-line tools are plain C++17/STL and build the same way on Linux, macOS and Windows
+- The 38 stable command-line tools, plus 9 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
 - `spatial_viewer` additionally needs FLTK, vendored per platform under `fltk/` (`fltk/linux`, `fltk/mac-arm`, `fltk/mac-intel`, `fltk/windows` -- each with its own `include/` and `lib/`), so a fresh checkout can build it without installing FLTK's dev packages first. See the comments at the top of the `Makefile` for what each platform additionally needs from the system itself (X11 client + fontconfig dev headers on Linux; nothing extra on macOS; `mingw-w64` on whichever machine cross-compiles to Windows).
 
 ## Build
@@ -86,6 +86,28 @@ Running any command with no arguments prints its usage help.
 | `spatial_lrs_segment` | Build segments from linear events over an LRS |
 | `spatial_svg` | Generate SVG maps |
 | `spatial_viewer` | Interactive graphical layer viewer |
+| `spatial_calc_vector` | Compute vector attribute columns via an expression |
+| `spatial_reclass` | Reclassify raster values via a lookup table |
+| `spatial_rat` | Export/import a raster attribute table: `-mode export\|import` |
+| `spatial_validate` | Validate/repair vector geometry |
+
+### Placeholder commands (⚠️ not yet implemented)
+
+The 9 commands below exist as compiled binaries — they parse and validate the documented arguments exactly like the stable commands above, print a clear "not implemented yet" notice, and exit without producing real output. They were added after a review of the `practicas/` tutorial manual showed it already assumed this functionality existed; see each command's entry in the [command manual](doc/README.md) for its documented (future) syntax. (Four other commands that started out this way — `spatial_calc_vector`, `spatial_reclass`, `spatial_rat` and `spatial_validate`, listed above — turned out to be the ones the manual's first tutorials actually depend on, and now have real functionality implemented.)
+
+There are 9, not one per operation: where several operations are close variants of the same task, they share one binary behind an `-operation`/`-mode` flag, the same convention `spatial_vectorize` (`-contour`/`-polygonize`/`-points`), `spatial_distance` (`-matrix`/`-point`/`-nearest`/`-self`) and `spatial_merge_raster` (`-method`) already use elsewhere in this project — not a new binary per variant.
+
+| Command | Description |
+|---|---|
+| `spatial_reproject` | Reproject vector/raster data between CRS |
+| `spatial_terrain` | Terrain analysis: `-operation slope\|aspect\|hillshade\|curvature` |
+| `spatial_hydrology` | DEM conditioning: `-operation fill\|flow_direction\|flow_accumulation` |
+| `spatial_cost` | Cost-distance analysis: `-operation cost\|viewshed\|corridor` |
+| `spatial_lrs_info` | LRS network information, optionally `-validate` |
+| `spatial_network_info` | Network information, optionally `-validate` |
+| `spatial_network_service` | Service areas / isochrones: `-mode alloc\|iso` |
+| `spatial_address_validate` | Validate street address ranges |
+| `spatial_reverse_geocode` | Reverse geocoding (nearest address to a point) |
 
 The detailed reference for each command (syntax, options, and examples, in the style of Unix `man` pages) lives in the **[command manual](doc/README.md)**, grouped by category:
 
@@ -96,6 +118,7 @@ The detailed reference for each command (syntax, options, and examples, in the s
 - [Spatial Queries & Analysis](doc/commands/analysis.md)
 - [Networks, LRS & Geocoding](doc/commands/network.md)
 - [Cartography & Visualization](doc/commands/cartography.md)
+- [Coordinate Reference Systems](doc/commands/projection.md)
 
 ## Documentation
 

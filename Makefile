@@ -97,7 +97,7 @@ endif
 # depends on include/viewer/*.hpp (see its own rule further down).
 CORE_HEADERS   := $(wildcard include/core/*.hpp)
 VIEWER_HEADERS := $(wildcard include/viewer/*.hpp)
-# The 34 console tools: plain C++17/STL, no FLTK, no networking, identical
+# The 38 console tools: plain C++17/STL, no FLTK, no networking, identical
 # build recipe on every platform (see the pattern rule in each PLATFORM
 # section below) -- spatial_viewer is deliberately not in this list since
 # it needs its own per-platform FLTK flags and is built by its own rule.
@@ -105,6 +105,7 @@ CONSOLE_PROGRAMS := \
     spatial_address \
     spatial_buffer \
     spatial_calc \
+    spatial_calc_vector \
     spatial_centroid \
     spatial_clip_raster \
     spatial_info \
@@ -114,6 +115,9 @@ CONSOLE_PROGRAMS := \
     spatial_merge_vector \
     spatial_merge_raster \
     spatial_rasterize \
+    spatial_rat \
+    spatial_reclass \
+    spatial_validate \
     spatial_vectorize \
     spatial_query \
     spatial_join \
@@ -136,6 +140,37 @@ CONSOLE_PROGRAMS := \
     spatial_lrs_segment \
     spatial_interpolate \
     spatial_zonal
+# Comandos "cascaron" (placeholder): analizan sus argumentos igual que el
+# resto del proyecto pero todavia no implementan la funcionalidad real (ver
+# cada archivo fuente y doc/commands/ para el detalle). Se agregaron a partir
+# de la revision de practicas/, que asumia que ya existian. Se agrupan aparte
+# de CONSOLE_PROGRAMS solo para que quede claro en el Makefile cuales de los
+# binarios que produce `make` son estables y cuales son cascarones; en el
+# build no hay ninguna diferencia de tratamiento entre ambos grupos.
+#
+# spatial_calc_vector, spatial_reclass, spatial_rat y spatial_validate se
+# movieron de esta lista a CONSOLE_PROGRAMS (arriba): son los 4 comandos
+# cascaron que resultaron ser requeridos por los tutoriales 1-3 del manual,
+# y ya tienen funcionalidad real implementada.
+#
+# Los 9 restantes no son uno por cada operacion imaginable: donde varias
+# operaciones son variantes cercanas de la misma tarea, comparten un solo
+# binario con un flag -operation/-mode, exactamente como ya hacen
+# spatial_vectorize (-contour/-polygonize/-points), spatial_distance
+# (-matrix/-point/-nearest/-self) y spatial_merge_raster
+# (-method first/last/min/max/average/sum) en el resto del proyecto -- en
+# vez de un binario nuevo por variante.
+STUB_PROGRAMS := \
+    spatial_reproject \
+    spatial_terrain \
+    spatial_hydrology \
+    spatial_cost \
+    spatial_lrs_info \
+    spatial_network_info \
+    spatial_network_service \
+    spatial_address_validate \
+    spatial_reverse_geocode
+CONSOLE_PROGRAMS += $(STUB_PROGRAMS)
 ALL_PROGRAMS := $(CONSOLE_PROGRAMS) spatial_viewer
 .PHONY: all clean windows linux mac macArm macIntel help $(ALL_PROGRAMS)
 all: $(ALL_PROGRAMS)
@@ -352,6 +387,21 @@ help:
 	@echo "  spatial_network          - Build network from street lines"
 	@echo "  spatial_shortest_path    - Find shortest path between two nodes"
 	@echo "  spatial_viewer           - Interactive graphical layer viewer"
+	@echo "  spatial_calc_vector      - Compute vector attribute columns via an expression"
+	@echo "  spatial_reclass          - Reclassify raster values via a lookup table"
+	@echo "  spatial_rat              - Export/import a raster attribute table: -mode export|import"
+	@echo "  spatial_validate         - Validate/repair vector geometry"
+	@echo ""
+	@echo "Placeholder commands (accept documented arguments, not yet implemented):"
+	@echo "  spatial_reproject          - Reproject vector/raster data between CRS"
+	@echo "  spatial_terrain            - Terrain analysis: -operation slope|aspect|hillshade|curvature"
+	@echo "  spatial_hydrology          - DEM conditioning: -operation fill|flow_direction|flow_accumulation"
+	@echo "  spatial_cost               - Cost-distance analysis: -operation cost|viewshed|corridor"
+	@echo "  spatial_lrs_info           - LRS network information, optionally -validate"
+	@echo "  spatial_network_info       - Network information, optionally -validate"
+	@echo "  spatial_network_service    - Service areas / isochrones: -mode alloc|iso"
+	@echo "  spatial_address_validate   - Validate street address ranges"
+	@echo "  spatial_reverse_geocode    - Reverse geocoding (nearest address to a point)"
 	@echo ""
 	@echo "Cross-platform build targets: make linux | mac | macArm | macIntel | windows"
 .PHONY: all clean test help
