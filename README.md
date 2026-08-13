@@ -91,24 +91,6 @@ Running any command with no arguments prints its usage help.
 | `spatial_rat` | Export/import a raster attribute table: `-mode export\|import` |
 | `spatial_validate` | Validate/repair vector geometry |
 
-### Placeholder commands (⚠️ not yet implemented)
-
-The 9 commands below exist as compiled binaries — they parse and validate the documented arguments exactly like the stable commands above, print a clear "not implemented yet" notice, and exit without producing real output. They were added after a review of the `practicas/` tutorial manual showed it already assumed this functionality existed; see each command's entry in the [command manual](doc/README.md) for its documented (future) syntax. (Four other commands that started out this way — `spatial_calc_vector`, `spatial_reclass`, `spatial_rat` and `spatial_validate`, listed above — turned out to be the ones the manual's first tutorials actually depend on, and now have real functionality implemented.)
-
-There are 9, not one per operation: where several operations are close variants of the same task, they share one binary behind an `-operation`/`-mode` flag, the same convention `spatial_vectorize` (`-contour`/`-polygonize`/`-points`), `spatial_distance` (`-matrix`/`-point`/`-nearest`/`-self`) and `spatial_merge_raster` (`-method`) already use elsewhere in this project — not a new binary per variant.
-
-| Command | Description |
-|---|---|
-| `spatial_reproject` | Reproject vector/raster data between CRS |
-| `spatial_terrain` | Terrain analysis: `-operation slope\|aspect\|hillshade\|curvature` |
-| `spatial_hydrology` | DEM conditioning: `-operation fill\|flow_direction\|flow_accumulation` |
-| `spatial_cost` | Cost-distance analysis: `-operation cost\|viewshed\|corridor` |
-| `spatial_lrs_info` | LRS network information, optionally `-validate` |
-| `spatial_network_info` | Network information, optionally `-validate` |
-| `spatial_network_service` | Service areas / isochrones: `-mode alloc\|iso` |
-| `spatial_address_validate` | Validate street address ranges |
-| `spatial_reverse_geocode` | Reverse geocoding (nearest address to a point) |
-
 The detailed reference for each command (syntax, options, and examples, in the style of Unix `man` pages) lives in the **[command manual](doc/README.md)**, grouped by category:
 
 - [General & Information](doc/commands/info.md)
@@ -119,17 +101,6 @@ The detailed reference for each command (syntax, options, and examples, in the s
 - [Networks, LRS & Geocoding](doc/commands/network.md)
 - [Cartography & Visualization](doc/commands/cartography.md)
 - [Coordinate Reference Systems](doc/commands/projection.md)
-
-## Documentation
-
-The [`doc/`](doc/) folder contains the full manual, ready to be published with [docsify](https://docsify.js.org/):
-
-```bash
-cd doc
-docsify serve .        # requires docsify-cli: npm i -g docsify-cli
-```
-
-or simply serve `doc/` with any static HTTP server.
 
 ## Project structure
 
