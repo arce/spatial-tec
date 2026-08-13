@@ -25,6 +25,7 @@
 #include "core/ascii_grid.hpp"
 #include "core/spatial_csv.hpp"
 #include "core/spatial_io.hpp"
+#include "core/spatial_style.hpp"
 #include "viewer/attributes_panel.hpp"
 #include "viewer/dock_panel.hpp"
 #include "viewer/layer.hpp"
@@ -380,6 +381,25 @@ private:
     return false;
   }
 
+  // Looks for <filename>.sty next to a layer being loaded and, if found,
+  // applies it on top of whatever default color the caller already set:
+  // plain color/fill/opacity for the base style, plus classification
+  // rules for MapWidget to use instead of a flat color (see ADR-0004,
+  // include/core/spatial_style.hpp, and MapWidget::resolveFillColor /
+  // MapWidget::drawRasterLayer for how those rules get applied at draw
+  // time). A layer with no matching .sty is left untouched.
+  void applySidecarStyle(Layer& layer, const std::string& filename) {
+    Spatial::LayerStyle sty;
+    if (!Spatial::loadSidecarStyle(filename, sty)) return;
+
+    uchar r, g, b;
+    if (parseHexColor(sty.color, r, g, b)) layer.color = fl_rgb_color(r, g, b);
+    if (parseHexColor(sty.fill_color, r, g, b)) layer.fill_color = fl_rgb_color(r, g, b);
+    if (sty.fill) layer.fill = true;
+    layer.opacity = sty.opacity;
+    layer.style_rules = sty.rules;
+  }
+
   bool loadVectorCSV(const std::string& filename) {
     auto layer = std::make_shared<Layer>();
     layer->filename = filename;
@@ -400,6 +420,7 @@ private:
     static const Fl_Color colors[] = {FL_BLUE, FL_RED, FL_GREEN, FL_YELLOW, FL_MAGENTA, FL_CYAN};
     layer->color = colors[layers_.size() % 6];
     layer->fill_color = layer->color;
+    applySidecarStyle(*layer, filename);
 
     layers_.insert(layers_.begin(), layer);
     current_layer_index_ = 0;
@@ -426,6 +447,7 @@ private:
     layer->color = FL_RED;
     layer->fill = true;
     layer->opacity = 0.6;
+    applySidecarStyle(*layer, filename);
 
     layers_.insert(layers_.begin(), layer);
     current_layer_index_ = 0;

@@ -562,22 +562,48 @@ private:
     fl_line_style(0);
   }
 
+  // Resolves the fill color to use for a vector feature: if the layer has
+  // style_rules (loaded from a .sty sidecar), scans the feature's
+  // attributes for one that falls in a rule's [min,max] range and returns
+  // that rule's color; otherwise falls back to the layer's plain
+  // fill_color. Mirrors spatial_svg's applyRules so a .sty renders the
+  // same way in both tools -- see ADR-0004.
+  Fl_Color resolveFillColor(const Layer& layer, const Spatial::VectorFeature& feature) {
+    if (!layer.style_rules.empty()) {
+      for (const auto& rule : layer.style_rules) {
+        for (const auto& [attr_name, attr_value] : feature.attributes) {
+          (void)attr_name;
+          try {
+            double value = std::stod(attr_value);
+            if (value >= rule.min_val && value <= rule.max_val) {
+              uchar r, g, b;
+              if (parseHexColor(rule.color, r, g, b)) return fl_rgb_color(r, g, b);
+            }
+          } catch (...) {
+          }
+        }
+      }
+    }
+    return layer.fill_color;
+  }
+
   void drawVectorLayer(const Layer& layer) {
     for (size_t fi = 0; fi < layer.vector_data.features.size(); ++fi) {
       const auto& feature = layer.vector_data.features[fi];
       if (feature.coordinates.size() < 2) continue;
 
       fl_line_style(FL_SOLID, layer.line_width);
+      Fl_Color fill_color = resolveFillColor(layer, feature);
 
       if (feature.part_starts.empty()) {
-        drawFeaturePart(layer, feature.type, feature.coordinates);
+        drawFeaturePart(layer, feature.type, feature.coordinates, fill_color);
       } else {
         // Each part gets its own fl_begin_polygon()/fl_end_polygon() call,
         // so e.g. a MultiPolygon made of several separate islands fills
         // and outlines each island on its own -- no stray edge connecting
         // one island to the next, no self-intersecting combined shape.
         for (const auto& range : featurePartRanges(feature)) {
-          drawFeaturePart(layer, feature.type, Viewer::extractRange(feature, range));
+          drawFeaturePart(layer, feature.type, Viewer::extractRange(feature, range), fill_color);
         }
       }
 
@@ -591,7 +617,7 @@ private:
   // MULTIPOINT/MULTILINESTRING/MULTIPOLYGON part is drawn exactly like its
   // singular counterpart -- see the Geom::MULTI* cases below.
   void drawFeaturePart(const Layer& layer, Spatial::VectorFeature::GeometryType base_type,
-                       const std::vector<double>& coords) {
+                       const std::vector<double>& coords, Fl_Color fill_color) {
     using Geom = Spatial::VectorFeature::GeometryType;
     if (coords.size() < 2) return;
 
@@ -601,7 +627,7 @@ private:
       const double pr = 4.0;  // marker radius, in screen pixels
 
       if (layer.fill) {
-        fl_color(layer.fill_color);
+        fl_color(fill_color);
         fl_pie((int)std::lround(cx - pr), (int)std::lround(cy - pr), (int)std::lround(pr * 2),
                (int)std::lround(pr * 2), 0, 360);
       }
@@ -619,7 +645,7 @@ private:
       if (coords.size() < 4) return;
 
       if (layer.fill) {
-        fl_color(layer.fill_color);
+        fl_color(fill_color);
         fl_begin_polygon();
         for (size_t i = 0; i < coords.size(); i += 2) {
           fl_vertex(toScreenX(coords[i]), toScreenY(coords[i + 1]));
@@ -680,7 +706,21 @@ private:
 
         uchar r_col, g_col, b_col;
         bool colored = false;
-        if (use_rat_color) {
+        // A .sty sidecar (layer.style_rules) takes priority over both the
+        // RAT color field and the default gradient below -- its classes
+        // were precomputed by spatial_colormap specifically for this
+        // layer, so they're the most specific style available. No
+        // interpolation: each cell's value is matched against a class
+        // range and that class's color used as-is (see ADR-0004).
+        if (!layer.style_rules.empty()) {
+          for (const auto& rule : layer.style_rules) {
+            if (val >= rule.min_val && val <= rule.max_val) {
+              colored = parseHexColor(rule.color, r_col, g_col, b_col);
+              break;
+            }
+          }
+        }
+        if (!colored && use_rat_color) {
           auto idx_it = rat_index.find(val);
           if (idx_it != rat_index.end()) {
             auto col_it = ds.rat_rows[idx_it->second].find(layer.rat_color_field);

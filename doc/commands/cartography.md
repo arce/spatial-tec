@@ -10,32 +10,51 @@ Tools for styling data and rendering maps: choropleth color classification, SVG 
 
 **NAME**
 
-`spatial_colormap` — generate choropleth color mapping
+`spatial_colormap` — generate a `.sty` color map / style file for a vector or raster layer
 
 **SYNOPSIS**
 
 ```
-spatial_colormap <csv_file> [options]
+spatial_colormap <input_file> [options]
 ```
 
 **DESCRIPTION**
 
-Analyzes a column of values in a CSV file and produces a style file (palette + classes) suitable for use with `spatial_svg`. The result is written to `stdout` unless `-output` is given.
+Classifies a set of numeric values into color classes and writes a `.sty` style file: a CSV attribute column for a vector `<input_file>` (`.csv`/`.tsv`, needs `-attribute`), or every non-`NODATA` cell value for a raster `<input_file>` (`.asc`/`.grd`, detected automatically by extension — `-attribute` is ignored). Every value's color is decided ahead of time and written out as a list of classes; there is no color interpolation at render time, so both `spatial_svg` and `spatial_viewer` just look up which class a value falls into (see ADR-0004 in the project's `adr/` directory for the design rationale).
+
+Unless `-output` is given, the result is written to `<input_file>` with its extension replaced by `.sty` (e.g. `countries.csv` → `countries.sty`, `dem.asc` → `dem.sty`) — this is the **sidecar convention**: a `.sty` with the same base name as its data file is picked up automatically by `spatial_svg` (`-layer`) and by `spatial_viewer` when that layer is loaded, with no extra flag needed. Pass `-output -` to write to `stdout` instead.
 
 **OPTIONS**
 
 | Option | Description |
 |---|---|
-| `-attribute <col>` | Column with the values to classify (**required**) |
+| `-attribute <col>` | Column with the values to classify (**required** for CSV input; ignored for raster input and for `-method single`) |
 | `-palette <name>` | Color palette (default: `YlOrRd`) |
-| `-classes <num>` | Number of classes (default: `5`) |
-| `-method <method>` | `quantile`, `equal_interval`, or `natural_breaks` |
+| `-classes <num>` | Number of classes (default: `5`, or `32` for `-method continuous` if not given explicitly) |
+| `-method <method>` | See **CLASSIFICATION METHODS** below |
+| `-interval <width>` | Class width (**required** for `-method defined_interval`) |
+| `-breaks <v1,v2,...>` | Explicit break points, at least 2 values (**required** for `-method manual`) |
 | `-layer <num>` | Layer number (default: `1`) |
 | `-title <text>` | Legend title (default: attribute name) |
 | `-no-legend` | Disable legend generation |
-| `-output <file>` | Output file (default: `stdout`) |
+| `-output <file>` | Output `.sty` file (default: `<input_file>.sty`; `-` for `stdout`) |
 | `-list-palettes` | List all available palettes |
 | `-help` | Show this help |
+
+**CLASSIFICATION METHODS**
+
+| Method | Description |
+|---|---|
+| `quantile` | Equal number of values per class |
+| `equal_interval` | Equal-width value ranges |
+| `natural_breaks` | Jenks-style clustering to minimize within-class variance |
+| `standard_deviation` | Classes one standard deviation wide, centered on the mean |
+| `pretty_breaks` | Rounds class boundaries to "nice" numbers (10, 25, 50...); the resulting class count may differ slightly from `-classes` |
+| `geometric_interval` | Class widths grow in geometric progression — useful for skewed data (population, income) |
+| `defined_interval` | Fixed-width classes; the class count is derived from `-interval` instead of `-classes` |
+| `manual` | Explicit break points from `-breaks`, no data read |
+| `continuous` | Like `equal_interval` but meant for a much finer `-classes` count (defaults to 32), reading as a smooth gradient even though it's still precomputed discrete classes under the hood — best suited to continuous raster surfaces (elevation, NDVI) |
+| `single` | No classification: one fixed color (the first stop of `-palette`) for the whole layer |
 
 **AVAILABLE PALETTES**
 
@@ -50,13 +69,23 @@ Analyzes a column of values in a CSV file and produces a style file (palette + c
 ```
 spatial_colormap countries.csv -attribute population
 spatial_colormap data.csv -attribute temp -palette RdBu -classes 7
-spatial_colormap cities.csv -attribute population -method quantile > style.ini
-spatial_colormap data.csv -attribute density -palette Greens -output style.ini
+spatial_colormap cities.csv -attribute population -method quantile -output style.sty
+spatial_colormap data.csv -attribute density -method manual -breaks 0,10,50,200,1000
+
+# Raster input (detected by extension, -attribute not needed):
+spatial_colormap dem.asc -method continuous -palette Viridis
+spatial_colormap slopes.asc -method equal_interval -classes 6
+
+# Flat color, no classification:
+spatial_colormap zones.csv -method single -palette Blues
+
+# Writes countries.sty next to countries.csv -- spatial_svg and
+# spatial_viewer pick it up automatically, no -style/-output needed there.
 ```
 
 **SEE ALSO**
 
-[spatial_svg](#spatial_svg), [spatial_statistics](analysis.md#spatial_statistics)
+[spatial_svg](#spatial_svg), [spatial_viewer](#spatial_viewer), [spatial_statistics](analysis.md#spatial_statistics)
 
 ---
 
@@ -75,16 +104,16 @@ spatial_svg <output> -layer <file> [options]
 
 **DESCRIPTION**
 
-Renders one or more vector layers as an SVG map. Layers and their symbology can be defined directly on the command line (`-layer`) or through a style file, for example one generated by `spatial_colormap`.
+Renders one or more vector layers as an SVG map. Layers and their symbology can be defined directly on the command line (`-layer`), through an explicit multi-layer style file (`-style`), or picked up automatically: if `<file>.sty` exists next to a `-layer <file>` (e.g. one generated by `spatial_colormap`), it's loaded and applied to that layer with no extra flag needed — this is the same sidecar convention `spatial_viewer` uses. Explicit `-color`/`-fill`/`-stroke`/`-opacity`/`-point_size` flags on the command line still override whatever a sidecar `.sty` set.
 
 **OPTIONS**
 
 | Option | Description |
 |---|---|
-| `-style <file>` | Style configuration file |
-| `-layer <file>` | Add a layer |
-| `-color <color>` | Stroke color (default: `black`) |
-| `-fill <color>` | Fill color (default: `#CCCCCC`) |
+| `-style <file>` | Style file describing one or more layers explicitly (`.sty` format) |
+| `-layer <file>` | Add a layer. If `<file>.sty` exists, it's used automatically as that layer's style |
+| `-color <color>` | Stroke color (default: `black`, or the sidecar's if present) |
+| `-fill <color>` | Fill color (default: `#CCCCCC`, or the sidecar's if present) |
 | `-stroke <width>` | Stroke width (default: `1`) |
 | `-opacity <value>` | Opacity (default: `0.8`) |
 | `-point_size <num>` | Point size (default: `5`) |
@@ -96,17 +125,18 @@ Renders one or more vector layers as an SVG map. Layers and their symbology can 
 **EXAMPLES**
 
 ```
-spatial_svg map.svg -style style.ini
+spatial_svg map.svg -style style.sty
 spatial_svg map.svg -layer countries.csv -color blue -fill lightblue
 
-# Combined with spatial_colormap:
-spatial_colormap countries.csv -attribute population > style.ini
-spatial_svg map.svg -style style.ini
+# Combined with spatial_colormap, via the sidecar convention -- no
+# -style/-output needed, countries.sty is picked up automatically:
+spatial_colormap countries.csv -attribute population
+spatial_svg map.svg -layer countries.csv
 ```
 
 **SEE ALSO**
 
-[spatial_colormap](#spatial_colormap)
+[spatial_colormap](#spatial_colormap), [spatial_viewer](#spatial_viewer)
 
 ---
 
@@ -130,6 +160,8 @@ Unlike the other tools, `spatial_viewer` is a graphical (GUI, FLTK-based) applic
 
 If a file is given as an argument, it is loaded automatically on startup.
 
+When a layer is loaded, `spatial_viewer` looks for a `<file>.sty` sidecar next to it (the same convention `spatial_svg` uses, typically produced by `spatial_colormap`) and applies it automatically: for a vector layer, each feature is colored by looking up which class its attribute value falls into; for a raster layer, each cell is colored the same way from its own value, taking priority over both a RAT color field and the default gradient. There is no color interpolation — every class's color was already decided when the `.sty` was generated (see ADR-0004 in the project's `adr/` directory).
+
 **MENU**
 
 | Menu | Actions |
@@ -147,4 +179,4 @@ spatial_viewer cities.csv
 
 **SEE ALSO**
 
-[spatial_info](info.md#spatial_info)
+[spatial_colormap](#spatial_colormap), [spatial_info](info.md#spatial_info)

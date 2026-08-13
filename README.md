@@ -102,15 +102,3 @@ The detailed reference for each command (syntax, options, and examples, in the s
 - [Cartography & Visualization](doc/commands/cartography.md)
 - [Coordinate Reference Systems](doc/commands/projection.md)
 
-## Project structure
-
-```
-spatial_tools/
-├── src/          # source code (.cpp) for each command
-├── include/      # in-house headers (core/) and third-party ones (FLTK, pugixml, json.hpp)
-├── fltk/         # prebuilt FLTK, one copy per platform (linux, mac-arm, mac-intel, windows)
-├── build/        # compiled binaries (created by `make`, not checked in)
-├── examples/     # sample data (CSV, GeoJSON, OSM, ASCII Grid)
-├── doc/          # command manual (docsify)
-└── Makefile
-```

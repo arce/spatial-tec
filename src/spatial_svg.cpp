@@ -10,25 +10,8 @@
 
 #include "../include/core/spatial_csv.hpp"
 #include "../include/core/spatial_string.hpp"
+#include "../include/core/spatial_style.hpp"
 #include "../include/core/spatial_types.hpp"
-
-struct Layer {
-  std::string file;
-  std::string color;
-  std::string fill_color;
-  double stroke_width;
-  double opacity;
-  bool fill;
-  double point_size;
-
-  struct StyleRule {
-    double min_val;
-    double max_val;
-    std::string color;
-    std::string label;
-  };
-  std::vector<StyleRule> rules;
-};
 
 struct BBox {
   double minx, miny, maxx, maxy;
@@ -147,7 +130,14 @@ std::string pointsToSVGPath(const std::vector<double>& coords,
   return path;
 }
 
-std::string applyRules(const Spatial::VectorFeature& feature, const Layer& layer) {
+// Picks the fill color for a feature: if the layer has classification
+// rules (from a .sty file, hand-written -style file, or an auto-detected
+// sidecar), scans the feature's attributes for one whose value falls in a
+// rule's [min,max] range and returns that rule's color; otherwise falls
+// back to the layer's plain fill color. See ADR-0004/include/core/
+// spatial_style.hpp -- this must stay in sync with the equivalent lookup
+// spatial_viewer does when rendering the same .sty.
+std::string applyRules(const Spatial::VectorFeature& feature, const Spatial::LayerStyle& layer) {
   if (layer.rules.empty()) {
     return layer.fill ? layer.fill_color : "none";
   }
@@ -167,7 +157,7 @@ std::string applyRules(const Spatial::VectorFeature& feature, const Layer& layer
   return layer.fill ? layer.fill_color : "none";
 }
 
-std::string generateSVG(const std::vector<Layer>& layers, int width, int height,
+std::string generateSVG(const std::vector<Spatial::LayerStyle>& layers, int width, int height,
                         const std::string& background, const std::string& title) {
   BBox global_bbox;
   for (const auto& layer_info : layers) {
@@ -282,127 +272,18 @@ std::string generateSVG(const std::vector<Layer>& layers, int width, int height,
   return svg;
 }
 
-std::vector<Layer> parseStyleFile(const std::string& filename) {
-  std::vector<Layer> layers;
-  std::ifstream file(filename);
-
-  if (!file.is_open()) {
-    std::cerr << "Error: Could not open style file: " << filename << "\n";
-    return layers;
-  }
-
-  std::string line;
-  std::map<int, Layer> layer_map;
-
-  while (std::getline(file, line)) {
-    line.erase(0, line.find_first_not_of(" \t"));
-    if (line.empty() || line[0] == '#')
-      continue;
-
-    size_t comment = line.find('#');
-    if (comment != std::string::npos) {
-      if (line.length() >= comment + 7 && line[comment] == '#') {
-      } else {
-        line = line.substr(0, comment);
-      }
-    }
-
-    line.erase(0, line.find_first_not_of(" \t"));
-    if (line.empty())
-      continue;
-
-    size_t eq = line.find('=');
-    if (eq == std::string::npos)
-      continue;
-
-    std::string key = line.substr(0, eq);
-    std::string value = line.substr(eq + 1);
-
-    key.erase(0, key.find_first_not_of(" \t"));
-    key.erase(key.find_last_not_of(" \t") + 1);
-    value.erase(0, value.find_first_not_of(" \t"));
-    value.erase(value.find_last_not_of(" \t") + 1);
-
-    if (key.rfind("layer.", 0) == 0) {
-      size_t dot1 = key.find('.');
-      size_t dot2 = key.find('.', dot1 + 1);
-      if (dot2 == std::string::npos)
-        continue;
-
-      int num = std::stoi(key.substr(dot1 + 1, dot2 - dot1 - 1));
-      std::string field = key.substr(dot2 + 1);
-
-      auto& layer = layer_map[num];
-
-      if (field == "file")
-        layer.file = value;
-      else if (field == "color")
-        layer.color = value;
-      else if (field == "fill") {
-        layer.fill = true;
-        layer.fill_color = value;
-      } else if (field == "stroke")
-        layer.stroke_width = std::stod(value);
-      else if (field == "opacity")
-        layer.opacity = std::stod(value);
-      else if (field == "point_size")
-        layer.point_size = std::stod(value);
-
-      else if (field.rfind("class.", 0) == 0) {
-        size_t dot_class = field.find('.');
-        std::string class_part = field.substr(dot_class + 1);
-        size_t dot_field = class_part.find('.');
-        if (dot_field == std::string::npos)
-          continue;
-
-        int class_num = std::stoi(class_part.substr(0, dot_field));
-        std::string class_field = class_part.substr(dot_field + 1);
-
-        if (class_num >= (int)layer.rules.size()) {
-          layer.rules.resize(class_num + 1);
-        }
-
-        auto& rule = layer.rules[class_num];
-        if (class_field == "min")
-          rule.min_val = std::stod(value);
-        else if (class_field == "max")
-          rule.max_val = std::stod(value);
-        else if (class_field == "color")
-          rule.color = value;
-        else if (class_field == "label")
-          rule.label = value;
-      }
-    }
-  }
-
-  for (auto& [num, layer] : layer_map) {
-    if (layer.color.empty())
-      layer.color = "black";
-    if (layer.fill_color.empty())
-      layer.fill_color = "#CCCCCC";
-    if (layer.stroke_width == 0)
-      layer.stroke_width = 1;
-    if (layer.opacity == 0)
-      layer.opacity = 0.8;
-    if (layer.point_size == 0)
-      layer.point_size = 5;
-
-    layers.push_back(layer);
-  }
-
-  return layers;
-}
-
 void printUsage() {
   std::cerr << "spatial_svg - Generate SVG map from vector data\n\n";
   std::cerr << "Usage:\n";
   std::cerr << "  spatial_svg <output> -style <file>\n";
   std::cerr << "  spatial_svg <output> -layer <file> [options]\n\n";
   std::cerr << "Options:\n";
-  std::cerr << "  -style <file>        Style configuration file\n";
-  std::cerr << "  -layer <file>        Add a layer\n";
-  std::cerr << "    -color <color>     Stroke color (default: black)\n";
-  std::cerr << "    -fill <color>      Fill color (default: #CCCCCC)\n";
+  std::cerr << "  -style <file>        Style configuration file (.sty), describes one or more layers\n";
+  std::cerr << "  -layer <file>        Add a layer. If <file>.sty exists next to it, it's used\n";
+  std::cerr << "                       automatically as that layer's style (see -color/-fill etc.\n";
+  std::cerr << "                       below to override it)\n";
+  std::cerr << "    -color <color>     Stroke color (default: black, or the sidecar's if present)\n";
+  std::cerr << "    -fill <color>      Fill color (default: #CCCCCC, or the sidecar's if present)\n";
   std::cerr << "    -stroke <width>    Stroke width (default: 1)\n";
   std::cerr << "    -opacity <value>   Opacity (default: 0.8)\n";
   std::cerr << "    -point_size <num>  Point size (default: 5)\n";
@@ -411,10 +292,10 @@ void printUsage() {
   std::cerr << "  -background <color>  Background color (default: white)\n";
   std::cerr << "  -title <text>        Map title\n\n";
   std::cerr << "Examples:\n";
-  std::cerr << "  spatial_svg map.svg -style style.ini\n";
+  std::cerr << "  spatial_svg map.svg -style style.sty\n";
   std::cerr << "  spatial_svg map.svg -layer countries.csv -color blue -fill lightblue\n";
-  std::cerr << "  spatial_colormap countries.csv -attribute population > style.ini\n";
-  std::cerr << "  spatial_svg map.svg -style style.ini\n";
+  std::cerr << "  spatial_colormap countries.csv -attribute population\n";
+  std::cerr << "  spatial_svg map.svg -layer countries.csv   # picks up countries.sty automatically\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -425,7 +306,7 @@ int main(int argc, char* argv[]) {
 
   std::string output_file;
   std::string style_file;
-  std::vector<Layer> layers;
+  std::vector<Spatial::LayerStyle> layers;
   int width = 800;
   int height = 600;
   std::string background = "white";
@@ -437,7 +318,7 @@ int main(int argc, char* argv[]) {
     if (arg == "-style" && i + 1 < argc) {
       style_file = argv[++i];
     } else if (arg == "-layer" && i + 1 < argc) {
-      Layer layer;
+      Spatial::LayerStyle layer;
       layer.file = argv[++i];
       layer.color = "black";
       layer.fill_color = "#CCCCCC";
@@ -445,6 +326,21 @@ int main(int argc, char* argv[]) {
       layer.opacity = 0.8;
       layer.fill = false;
       layer.point_size = 5;
+
+      // Auto-detect a <file>.sty sidecar (e.g. produced by
+      // spatial_colormap) and use it as this layer's style. Explicit
+      // -color/-fill/... flags below still take priority over it.
+      Spatial::LayerStyle sidecar;
+      if (Spatial::loadSidecarStyle(layer.file, sidecar)) {
+        layer.color = sidecar.color;
+        layer.fill_color = sidecar.fill_color;
+        layer.fill = sidecar.fill;
+        layer.stroke_width = sidecar.stroke_width;
+        layer.opacity = sidecar.opacity;
+        layer.point_size = sidecar.point_size;
+        layer.rules = sidecar.rules;
+        std::cout << "Using style: " << Spatial::sidecarStylePath(layer.file) << "\n";
+      }
 
       while (i + 1 < argc && argv[i + 1][0] == '-') {
         std::string opt = argv[i + 1];
@@ -483,7 +379,7 @@ int main(int argc, char* argv[]) {
   }
 
   if (!style_file.empty()) {
-    layers = parseStyleFile(style_file);
+    layers = Spatial::parseStyleFile(style_file);
     if (layers.empty()) {
       std::cerr << "Error: No layers found in style file\n";
       return 1;
@@ -518,4 +414,3 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
-

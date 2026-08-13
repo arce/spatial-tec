@@ -5,6 +5,7 @@
 
 #include <FL/Enumerations.H>
 
+#include "core/spatial_style.hpp"
 #include "core/spatial_types.hpp"
 
 namespace Viewer {
@@ -45,6 +46,17 @@ struct Layer {
   // numbers.
   std::string rat_color_field;
   std::string rat_label_field;
+
+  // Classification rules loaded from a <filename>.sty sidecar (see
+  // ADR-0004, include/core/spatial_style.hpp), if one was found next to
+  // `filename` when this layer was loaded. Empty means "no style loaded"
+  // -- draw with the plain color/fill_color above instead. When present,
+  // MapWidget looks up which rule's [min,max] range a feature's attribute
+  // (vector) or a cell's value (raster) falls into and uses that rule's
+  // color, taking priority over rat_color_field for raster layers. There
+  // is no interpolation between rules -- every value's color is already
+  // decided by spatial_colormap when the .sty was generated.
+  std::vector<Spatial::StyleRule> style_rules;
 
   // Draws a text label per feature/cell on the map when true. For a vector
   // layer, label_field picks which attribute column supplies the text

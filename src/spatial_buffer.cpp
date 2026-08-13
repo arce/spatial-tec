@@ -357,8 +357,8 @@ int main(int argc, char* argv[]) {
   output.type_counts = type_counts;
 
   writeVectorCSV(output, output_file, {},
-                 {"Buffered from original dataset",
-                  "Total features: " + std::to_string(output.features.size())},
+                 {"# Buffered from original dataset",
+                  "# Total features: " + std::to_string(output.features.size())},
                  true);
 
   std::cout << "\n========================================\n";
