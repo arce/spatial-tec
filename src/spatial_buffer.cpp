@@ -216,8 +216,8 @@ void dissolveBuffers(Spatial::VectorDataset& dataset) {
 }
 
 void printUsage() {
-  std::cerr << "spatial_buffer_vector - Create buffers around vector geometries\n\n";
-  std::cerr << "Usage: spatial_buffer_vector <input> <output> -distance <value> [options]\n\n";
+  std::cerr << "spatial_buffer - Create buffers around vector geometries\n\n";
+  std::cerr << "Usage: spatial_buffer <input> <output> -distance <value> [options]\n\n";
   std::cerr << "Options:\n";
   std::cerr << "  -distance <value>   Buffer distance (positive = outward, negative = inward)\n";
   std::cerr << "  -units <units>      Units: units (default) or meters/kilometers\n";
@@ -225,10 +225,10 @@ void printUsage() {
   std::cerr << "  -cap <style>        Cap style: round (default) or flat\n";
   std::cerr << "  -dissolve           Dissolve overlapping buffers\n";
   std::cerr << "\nExamples:\n";
-  std::cerr << "  spatial_buffer_vector cities.csv buffers.csv -distance 10\n";
-  std::cerr << "  spatial_buffer_vector roads.csv corridors.csv -distance 100 -units meters\n";
-  std::cerr << "  spatial_buffer_vector zones.csv inner.csv -distance -5\n";
-  std::cerr << "  spatial_buffer_vector cities.csv dissolved.csv -distance 10 -dissolve\n";
+  std::cerr << "  spatial_buffer cities.csv buffers.csv -distance 10\n";
+  std::cerr << "  spatial_buffer roads.csv corridors.csv -distance 100 -units meters\n";
+  std::cerr << "  spatial_buffer zones.csv inner.csv -distance -5\n";
+  std::cerr << "  spatial_buffer cities.csv dissolved.csv -distance 10 -dissolve\n";
 }
 
 int main(int argc, char* argv[]) {

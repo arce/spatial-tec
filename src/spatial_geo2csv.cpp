@@ -309,16 +309,16 @@ void convertGeoJSONToCSV(const std::string& input_file, const std::string& outpu
 }
 
 void printUsage() {
-  std::cerr << "geojson2csv - Convert GeoJSON to spatial CSV\n\n";
-  std::cerr << "Usage: geojson2csv <input.geojson> <output.csv> [options]\n\n";
+  std::cerr << "spatial_geo2csv - Convert GeoJSON to spatial CSV\n\n";
+  std::cerr << "Usage: spatial_geo2csv <input.geojson> <output.csv> [options]\n\n";
   std::cerr << "Options:\n";
   std::cerr << "  -no_geometry        Exclude geometry column\n";
   std::cerr << "  -include_type       Include geometry type column\n";
   std::cerr << "  -props <list>       Only include specified properties (comma-separated)\n\n";
   std::cerr << "Examples:\n";
-  std::cerr << "  geojson2csv data.geojson data.csv\n";
-  std::cerr << "  geojson2csv data.geojson data.csv -props id,name,population\n";
-  std::cerr << "  geojson2csv data.geojson data.csv -include_type\n";
+  std::cerr << "  spatial_geo2csv data.geojson data.csv\n";
+  std::cerr << "  spatial_geo2csv data.geojson data.csv -props id,name,population\n";
+  std::cerr << "  spatial_geo2csv data.geojson data.csv -include_type\n";
 }
 
 int main(int argc, char* argv[]) {

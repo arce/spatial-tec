@@ -18,8 +18,6 @@ Tools that create, transform, or combine vector geometries (points, lines, polyg
 spatial_buffer <input> <output> -distance <value> [options]
 ```
 
-> The tool's own `--help`/error text still calls itself `spatial_buffer_vector` (an older name) — that's just its self-printed banner, not a separate binary. `make` only ever produces `build/spatial_buffer`; invoke it by that name.
-
 **DESCRIPTION**
 
 Creates buffer polygons around points, lines, or polygons. A positive distance grows the geometry outward; a negative distance shrinks it inward.

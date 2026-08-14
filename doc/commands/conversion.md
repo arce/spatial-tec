@@ -59,8 +59,6 @@ spatial_csv2geo cities.csv cities.geojson -props id,name,population
 spatial_geo2csv <input.geojson> <output.csv> [options]
 ```
 
-> The tool's own `--help`/error text still calls itself `geojson2csv` (an older name from before the `spatial_*` naming convention) — that's just its self-printed banner, not a separate binary. `make` only ever produces `build/spatial_geo2csv`; invoke it by that name.
-
 **DESCRIPTION**
 
 Converts a GeoJSON file into a spatial CSV with geometry encoded as WKT, flattening each feature's properties into columns. A feature's top-level GeoJSON `id` (RFC 7946 §3.2, distinct from `properties`) is preserved as the CSV row's `id` column when present, falling back to a sequential number otherwise. If a real property happens to be named `id`, `geometry_type`, or `geometry` — colliding with a column this tool needs for its own bookkeeping — the reserved column is renamed (e.g. to `_id`) and a warning is printed, so the property's value is never silently overwritten.
