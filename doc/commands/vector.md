@@ -247,7 +247,7 @@ spatial_merge_vector c1.csv c2.csv c3.csv merged.csv -auto_attrs
 
 **NAME**
 
-`spatial_validate` — valida (y opcionalmente repara) la geometría de un conjunto de datos vectoriales
+`spatial_validate` — validate (and optionally repair) the geometry of a vector dataset
 
 **SYNOPSIS**
 
@@ -257,16 +257,16 @@ spatial_validate <input> <output> [options]
 
 **DESCRIPTION**
 
-Sin una librería de geometría completa (GEOS) disponible, revisa cada parte (anillo/línea/punto) de cada feature con un conjunto acotado pero real de comprobaciones: geometría vacía, muy pocos vértices, vértices duplicados consecutivos, anillos no cerrados, auto-intersecciones (cruces tipo "X" entre segmentos no adyacentes) y orientación de anillos (se espera sentido antihorario/CCW). La detección de auto-intersección no cubre traslapes colineales (dos segmentos superpuestos sobre la misma recta).
+Without a full geometry library (GEOS) available, checks each part (ring/line/point) of each feature with a bounded but real set of checks: empty geometry, too few vertices, consecutive duplicate vertices, unclosed rings, self-intersections ("X"-style crossings between non-adjacent segments), and ring orientation (counter-clockwise/CCW is expected). Self-intersection detection does not cover collinear overlaps (two segments overlapping on the same line).
 
-El archivo de salida siempre se escribe: idéntico a la entrada si no se pasó `-fix`, o con las reparaciones aplicadas si se pasó. Sin `-fix`, los problemas se reportan pero la geometría no se modifica. De los problemas detectados, `unclosed_ring`, `duplicate_vertex` y `cw_orientation` son reparables con `-fix`; `empty_geometry`, `too_few_vertices` y `self_intersection` no lo son (solo se reportan).
+The output file is always written: identical to the input if `-fix` wasn't passed, or with repairs applied if it was. Without `-fix`, issues are reported but the geometry is not modified. Of the detected issues, `unclosed_ring`, `duplicate_vertex`, and `cw_orientation` are repairable with `-fix`; `empty_geometry`, `too_few_vertices`, and `self_intersection` are not (they are only reported).
 
 **OPTIONS**
 
 | Option | Description |
 |---|---|
-| `-fix` | Intentar reparar geometrías inválidas (cierra anillos, elimina vértices duplicados consecutivos, invierte anillos en sentido horario) |
-| `-report <file>` | Guardar un reporte CSV de los problemas encontrados (columnas: `feature_id,geometry_type,part,issue,severity,fixed,message`) |
+| `-fix` | Attempt to repair invalid geometries (closes rings, removes consecutive duplicate vertices, reverses clockwise rings) |
+| `-report <file>` | Save a CSV report of the issues found (columns: `feature_id,geometry_type,part,issue,severity,fixed,message`) |
 
 **EXAMPLES**
 
@@ -285,7 +285,7 @@ spatial_validate parcels.csv parcels_checked.csv -report errors.csv
 
 **NAME**
 
-`spatial_calc_vector` — calcula o transforma columnas de atributos de un CSV vectorial mediante una expresión
+`spatial_calc_vector` — compute or transform attribute columns of a vector CSV via an expression
 
 **SYNOPSIS**
 
@@ -295,16 +295,16 @@ spatial_calc_vector <input.csv> <output.csv> -column <name> -expression <expr> [
 
 **DESCRIPTION**
 
-Contraparte vectorial de [`spatial_calc`](raster.md#spatial_calc) (que es exclusivamente para ráster): en vez de operar celda por celda sobre uno o más rásteres, evalúa la expresión dada fila por fila sobre las columnas de atributos de un CSV vectorial, escribiendo el resultado en una columna nueva (insertada justo antes de la columna de geometría) o sobrescribiendo una existente.
+The vector counterpart to [`spatial_calc`](raster.md#spatial_calc) (which is raster-only): instead of operating cell-by-cell over one or more rasters, it evaluates the given expression row-by-row over a vector CSV's attribute columns, writing the result into a new column (inserted right before the geometry column) or overwriting an existing one.
 
-La expresión admite `+ - * / ^`, comparaciones (`> < >= <= == !=`), el operador ternario `condición ? si : no`, paréntesis, negación unaria y las funciones `sqrt abs sin cos tan log log10 exp pow min max`. Cualquier identificador que no sea el nombre de una función se interpreta como el nombre de una columna de atributos del CSV de entrada; si la expresión referencia una columna inexistente, el comando falla con un error antes de procesar ninguna fila.
+The expression supports `+ - * / ^`, comparisons (`> < >= <= == !=`), the ternary operator `condition ? yes : no`, parentheses, unary negation, and the functions `sqrt abs sin cos tan log log10 exp pow min max`. Any identifier that isn't a function name is interpreted as the name of an attribute column in the input CSV; if the expression references a column that doesn't exist, the command fails with an error before processing any row.
 
 **OPTIONS**
 
 | Option | Description |
 |---|---|
-| `-column <name>` | Columna a crear o sobrescribir (**requerido**) |
-| `-expression <expr>` | Expresión a evaluar por fila (**requerido**) |
+| `-column <name>` | Column to create or overwrite (**required**) |
+| `-expression <expr>` | Expression to evaluate per row (**required**) |
 
 **EXAMPLES**
 

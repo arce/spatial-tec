@@ -280,155 +280,11 @@ spatial_resample elev.asc elev_half.asc -scale 2 -method average
 
 ---
 
-## Terrain, Hydrology & Cost Analysis (placeholder commands)
-
-> ⚠️ **Estado:** los tres comandos de esta sección (`spatial_terrain`, `spatial_hydrology`, `spatial_cost`) son cascarones (placeholders). Analizan y validan sus argumentos igual que el resto de Spatial TEC, pero no calculan todavía ningún resultado real: terminan imprimiendo un aviso de "no implementado" y no generan un archivo de salida. Se agregaron a partir de la revisión del manual `practicas/`, que ya asumía que existían. Siguiendo la misma convención que ya usan [`spatial_vectorize`](#spatial_vectorize) (`-contour`/`-polygonize`/`-points`), [`spatial_distance`](analysis.md#spatial_distance) (`-matrix`/`-point`/`-nearest`/`-self`) y [`spatial_merge_raster`](#spatial_merge_raster) (`-method`), cada uno agrupa varias operaciones cercanas bajo un solo binario con un flag `-operation`/`-mode`, en vez de un comando separado por operación. Consulte el código fuente en `src/` para el estado exacto de cada uno. (`spatial_reclass`, documentado más abajo, se agregó junto con estos pero ya tiene funcionalidad real implementada.)
-
-## spatial_terrain
-
-**NAME**
-
-`spatial_terrain` — análisis de terreno a partir de un DEM: pendiente, orientación, sombreado, curvatura *(placeholder)*
-
-**SYNOPSIS**
-
-```
-spatial_terrain <input.asc> <output.asc> -operation <slope|aspect|hillshade|curvature> [options]
-```
-
-**OPERATIONS**
-
-| Operation | Description |
-|---|---|
-| `-operation slope` | Raster de pendiente |
-| `-operation aspect` | Raster de orientación (aspecto) |
-| `-operation hillshade` | Raster de sombreado (relieve sombreado) |
-| `-operation curvature` | Raster de curvatura del terreno |
-
-**OPTIONS** (aplican solo a la operación correspondiente)
-
-| Option | Description |
-|---|---|
-| `-units <degrees|percent>` | Unidades de la pendiente (`slope`; default: `degrees`) |
-| `-z_factor <value>` | Factor de exageración vertical (`slope`, `hillshade`; default: `1.0`) |
-| `-flat_value <value>` | Valor asignado a celdas planas (`aspect`; default: `-1`) |
-| `-azimuth <value>` | Azimut de la fuente de luz en grados (`hillshade`; default: `315`) |
-| `-altitude <value>` | Altitud de la fuente de luz en grados (`hillshade`; default: `45`) |
-| `-type <profile|planform|general>` | Tipo de curvatura (`curvature`; default: `general`) |
-
-**EXAMPLES**
-
-```
-spatial_terrain dem.asc slope.asc -operation slope
-spatial_terrain dem.asc slope.asc -operation slope -units percent
-spatial_terrain dem.asc aspect.asc -operation aspect
-spatial_terrain dem.asc hillshade.asc -operation hillshade -azimuth 315 -altitude 45
-spatial_terrain dem.asc curvature.asc -operation curvature -type profile
-```
-
-**SEE ALSO**
-
-[spatial_hydrology](#spatial_hydrology), [spatial_cost](#spatial_cost)
-
----
-
-## spatial_hydrology
-
-**NAME**
-
-`spatial_hydrology` — condicionamiento hidrológico de un DEM: relleno de sumideros, dirección y acumulación de flujo *(placeholder)*
-
-**SYNOPSIS**
-
-```
-spatial_hydrology <input.asc> <output.asc> -operation <fill|flow_direction|flow_accumulation> [options]
-```
-
-**OPERATIONS**
-
-| Operation | Description |
-|---|---|
-| `-operation fill` | Rellena sumideros (depresiones) en un DEM |
-| `-operation flow_direction` | Dirección de flujo (D8) a partir de un DEM ya rellenado |
-| `-operation flow_accumulation` | Acumulación de flujo a partir de un raster de dirección de flujo (aquí `<input.asc>` es ese raster, no el DEM) |
-
-**OPTIONS** (aplican solo a la operación correspondiente)
-
-| Option | Description |
-|---|---|
-| `-max_depth <value>` | Profundidad máxima a rellenar (`fill`; default: sin límite) |
-| `-method <d8>` | Algoritmo de dirección de flujo (`flow_direction`; default: `d8`) |
-| `-weights <file>` | Raster opcional de pesos (`flow_accumulation`; default: cada celda pesa 1) |
-| `-verbose` | Mostrar información detallada |
-
-**EXAMPLES**
-
-```
-spatial_hydrology dem.asc dem_filled.asc -operation fill
-spatial_hydrology dem_filled.asc flowdir.asc -operation flow_direction
-spatial_hydrology flowdir.asc flowacc.asc -operation flow_accumulation
-```
-
-**SEE ALSO**
-
-[spatial_terrain](#spatial_terrain), [spatial_cost](#spatial_cost)
-
----
-
-## spatial_cost
-
-**NAME**
-
-`spatial_cost` — costo-distancia, visibilidad y corredores de menor costo sobre un raster *(placeholder)*
-
-**SYNOPSIS**
-
-```
-spatial_cost <input1> [input2] <output> -operation <cost|viewshed|corridor> [options]
-```
-
-**DESCRIPTION**
-
-Acepta uno o dos rasters de entrada según la operación, con el mismo patrón variádico que [`spatial_merge_raster`](#spatial_merge_raster) (`<input1> [input2...] <output>`): `-operation corridor` necesita dos superficies de costo ya calculadas; `cost`/`viewshed` necesitan solo una.
-
-**OPERATIONS**
-
-| Operation | Inputs | Description |
-|---|---|---|
-| `-operation cost` | 1 (raster de fricción) | Superficie de costo acumulado desde un punto de origen |
-| `-operation viewshed` | 1 (DEM) | Máscara de visibilidad desde un punto de observación |
-| `-operation corridor` | 2 (superficies de costo acumulado) | Corredor de menor costo entre ambas |
-
-**OPTIONS** (aplican solo a la operación correspondiente)
-
-| Option | Description |
-|---|---|
-| `-source <x> <y>` | Punto de origen (`cost`; **requerido** para esa operación) |
-| `-max_cost <value>` | Costo máximo acumulado (`cost`; default: sin límite) |
-| `-observer <x> <y>` | Punto de observación (`viewshed`; **requerido** para esa operación) |
-| `-obs_height <value>` | Altura del observador sobre el terreno (`viewshed`; default: `1.7`) |
-| `-radius <value>` | Radio máximo de análisis (`viewshed`; default: sin límite) |
-| `-threshold <value>` | Umbral de costo del corredor (`corridor`; default: mínimo + 10%) |
-
-**EXAMPLES**
-
-```
-spatial_cost friction.asc cost.asc -operation cost -source -84.09 9.93
-spatial_cost dem.asc view.asc -operation viewshed -observer -84.09 9.93
-spatial_cost cost_a.asc cost_b.asc corridor.asc -operation corridor
-```
-
-**SEE ALSO**
-
-[spatial_terrain](#spatial_terrain), [spatial_hydrology](#spatial_hydrology)
-
----
-
 ## spatial_reclass
 
 **NAME**
 
-`spatial_reclass` — reclasifica los valores de un raster según una tabla de rangos o valores
+`spatial_reclass` — reclassify raster values using a table of ranges or exact values
 
 **SYNOPSIS**
 
@@ -438,14 +294,14 @@ spatial_reclass <input.asc> <output.asc> -table <file> [options]
 
 **DESCRIPTION**
 
-Lee una tabla CSV de reglas y reasigna cada celda del ráster de entrada según ella. La tabla admite dos formatos, detectados automáticamente por su cabecera: rangos (`from,to,new_value`, con `from <= v <= to` inclusivo en ambos extremos, primera regla que coincide en el orden de la tabla) o valor exacto (`value,new_value`, con tolerancia `1e-9`). Toda celda que no coincida con ninguna regla, así como las celdas que ya eran NODATA en la entrada, se escriben como NODATA en la salida (con el valor dado por `-nodata`).
+Reads a CSV table of rules and reassigns each cell of the input raster according to it. The table supports two formats, auto-detected from its header: ranges (`from,to,new_value`, with `from <= v <= to` inclusive on both ends, first matching rule in table order wins) or exact value (`value,new_value`, with `1e-9` tolerance). Any cell that matches no rule, as well as cells that were already NODATA in the input, are written as NODATA in the output (using the value given by `-nodata`).
 
 **OPTIONS**
 
 | Option | Description |
 |---|---|
-| `-table <file.csv>` | Tabla de reclasificación: columnas `from,to,new_value` o `value,new_value` (**requerido**) |
-| `-nodata <value>` | Valor NODATA de salida, también usado para celdas sin regla (default: `-9999`) |
+| `-table <file.csv>` | Reclassification table: `from,to,new_value` or `value,new_value` columns (**required**) |
+| `-nodata <value>` | Output NODATA value, also used for cells with no matching rule (default: `-9999`) |
 
 **EXAMPLES**
 
@@ -463,7 +319,7 @@ spatial_reclass landuse.asc reclass.asc -table rules.csv
 
 **NAME**
 
-`spatial_rat` — exporta o importa la tabla de atributos raster (RAT) de un archivo ASCII Grid
+`spatial_rat` — export or import a raster's Raster Attribute Table (RAT) from an ASCII Grid file
 
 **SYNOPSIS**
 
@@ -473,16 +329,16 @@ spatial_rat <input.asc> <table.csv> [output.asc] -mode <export|import>
 
 **DESCRIPTION**
 
-El formato ASCII Grid del proyecto admite internamente una sección opcional `@RAT` con una tabla de clasificación, leída y escrita automáticamente por el resto de comandos raster (ver `include/core/spatial_types.hpp` y `spatial_io.hpp`). `spatial_rat` es la interfaz de línea de comandos para gestionarla desde afuera del propio archivo `.asc`, en ambas direcciones bajo un solo binario con `-mode`.
+The project's ASCII Grid format internally supports an optional `@RAT` section holding a classification table, read and written automatically by the rest of the raster commands (see `include/core/spatial_types.hpp` and `spatial_io.hpp`). `spatial_rat` is the command-line interface for managing it from outside the `.asc` file itself, in both directions under a single binary with `-mode`.
 
-`-mode export` falla con un error si `<input.asc>` no tiene una sección `@RAT` embebida. `-mode import` requiere que `<table.csv>` tenga una columna llamada `value` (cualquier capitalización; se normaliza a minúsculas al importar), usada para emparejar cada fila de la tabla con las celdas del ráster que tengan ese valor.
+`-mode export` fails with an error if `<input.asc>` has no embedded `@RAT` section. `-mode import` requires `<table.csv>` to have a column named `value` (any capitalization; normalized to lowercase on import), used to match each table row against the raster cells that hold that value.
 
 **OPTIONS**
 
 | Option | Description |
 |---|---|
-| `-mode export` | Exporta la RAT ya incluida en `<input.asc>` hacia `<table.csv>` |
-| `-mode import` | Importa `<table.csv>` como la RAT de `<input.asc>`, escribiendo `<output.asc>` (**requerido** para este modo) |
+| `-mode export` | Export the RAT already embedded in `<input.asc>` to `<table.csv>` |
+| `-mode import` | Import `<table.csv>` as the RAT for `<input.asc>`, writing `<output.asc>` (**required** for this mode) |
 
 **EXAMPLES**
 
