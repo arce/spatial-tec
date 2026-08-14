@@ -30,10 +30,16 @@ struct ColorMapConfig {
   int layer_num = 1;
   bool include_legend = true;
   std::string legend_title = "";
+  std::string legend_position = "bottom-right";
   std::string output_file = "";
   // Set (and `classes` left empty) for -method single: no classification,
   // just one fixed color for the whole layer.
   std::string fixed_color = "";
+
+  // Per-feature label metadata (ADR-0005) -- see -show-labels/-label-field
+  // in printUsage() below.
+  bool show_labels = false;
+  std::string label_field;
 };
 
 class ColorPalette {
@@ -674,6 +680,12 @@ public:
     if (!config.fixed_color.empty()) {
       out << "layer." << config.layer_num << ".fill=" << config.fixed_color << "\n";
     }
+    if (config.show_labels) {
+      out << "layer." << config.layer_num << ".show_labels=true\n";
+      if (!config.label_field.empty()) {
+        out << "layer." << config.layer_num << ".label_field=" << config.label_field << "\n";
+      }
+    }
     out << "\n";
 
     if (!config.classes.empty()) {
@@ -688,20 +700,24 @@ public:
       }
     }
 
+    // Legend keys are namespaced under layer.N. like everything else (see
+    // ADR-0005) -- a legend always belongs to one layer, so a hand-written
+    // multi-layer -style file can turn each on/off and position each
+    // independently. Only enabled/title/position have a renderer that
+    // consumes them (spatial_svg) -- the finer appearance knobs an earlier
+    // version of this writer emitted (font_size, font_color, background,
+    // border_color, border_width, padding, margin, columns) were metadata
+    // nobody read, so they're not written anymore (ADR-0005, Decision 2).
     if (config.include_legend) {
       out << "# Legend configuration\n";
-      out << "legend.enabled=true\n";
+      out << "layer." << config.layer_num << ".legend.enabled=true\n";
       std::string default_title = config.attribute.empty() ? "Style" : config.attribute;
-      out << "legend.title=" << (config.legend_title.empty() ? default_title : config.legend_title) << "\n";
-      out << "legend.position=bottom-right\n";
-      out << "legend.font_size=12\n";
-      out << "legend.font_color=#333333\n";
-      out << "legend.background=#FFFFFF\n";
-      out << "legend.border_color=#CCCCCC\n";
-      out << "legend.border_width=1\n";
-      out << "legend.padding=10\n";
-      out << "legend.margin=20\n";
-      out << "legend.columns=1\n\n";
+      out << "layer." << config.layer_num << ".legend.title="
+          << (config.legend_title.empty() ? default_title : config.legend_title) << "\n";
+      out << "layer." << config.layer_num << ".legend.position=" << config.legend_position << "\n\n";
+    } else {
+      out << "# Legend configuration\n";
+      out << "layer." << config.layer_num << ".legend.enabled=false\n\n";
     }
 
     if (!config.classes.empty()) {
@@ -746,6 +762,11 @@ void printUsage() {
   std::cerr << "  -layer <num>         Layer number (default: 1)\n";
   std::cerr << "  -title <text>        Legend title (default: attribute name)\n";
   std::cerr << "  -no-legend           Disable legend generation\n";
+  std::cerr << "  -legend-position <p> Legend corner for spatial_svg: top-left, top-right,\n";
+  std::cerr << "                       bottom-left, bottom-right (default: bottom-right)\n";
+  std::cerr << "  -show-labels         Emit per-feature/per-cell labels (spatial_svg, spatial_viewer)\n";
+  std::cerr << "  -label-field <col>   Attribute column to use as label text (vector only; defaults\n";
+  std::cerr << "                       to -attribute if -show-labels is given without this)\n";
   std::cerr << "  -output <file>       Output .sty file (default: <input_file>.sty; use '-' for stdout)\n";
   std::cerr << "  -list-palettes       List all available palettes\n";
   std::cerr << "  -help                Show this help\n\n";
@@ -763,6 +784,7 @@ void printUsage() {
   std::cerr << "  spatial_colormap slopes.asc -method equal_interval -classes 6\n";
   std::cerr << "  spatial_colormap zones.csv -method single -palette Blues\n";
   std::cerr << "  spatial_colormap data.csv -attribute density -method manual -breaks 0,10,50,200,1000\n";
+  std::cerr << "  spatial_colormap cities.csv -attribute population -show-labels -label-field name\n";
   std::cerr << "  (writes countries.sty next to countries.csv unless -output is given)\n";
 }
 
@@ -849,10 +871,13 @@ int main(int argc, char* argv[]) {
   int layer_num = 1;
   std::string legend_title;
   bool include_legend = true;
+  std::string legend_position = "bottom-right";
   std::string output_file;
   bool list_palettes = false;
   double interval_width = 0.0;
   std::vector<double> manual_breaks;
+  bool show_labels = false;
+  std::string label_field;
 
   for (int i = 1; i < argc; i++) {
     std::string arg = argv[i];
@@ -880,6 +905,13 @@ int main(int argc, char* argv[]) {
       legend_title = argv[++i];
     } else if (arg == "-no-legend") {
       include_legend = false;
+    } else if (arg == "-legend-position" && i + 1 < argc) {
+      legend_position = argv[++i];
+    } else if (arg == "-show-labels") {
+      show_labels = true;
+    } else if (arg == "-label-field" && i + 1 < argc) {
+      label_field = argv[++i];
+      show_labels = true;
     } else if (arg == "-output" && i + 1 < argc) {
       output_file = argv[++i];
     } else if (arg == "-list-palettes") {
@@ -979,6 +1011,19 @@ int main(int argc, char* argv[]) {
 
   config.legend_title = legend_title;
   config.include_legend = include_legend;
+  config.legend_position = legend_position;
+
+  // -show-labels with no explicit -label-field on a vector layer falls
+  // back to the classified attribute itself -- better than emitting
+  // show_labels=true with nothing to show (see ADR-0005, Decision 5). For
+  // raster there's no attribute to fall back to; -show-labels there just
+  // enables spatial_viewer's existing per-cell label mechanism (RAT label
+  // field or raw cell value), which doesn't use label_field at all.
+  config.show_labels = show_labels;
+  config.label_field = label_field;
+  if (config.show_labels && config.label_field.empty() && !is_raster) {
+    config.label_field = attribute;
+  }
 
   std::string out_path = output_file;
   if (out_path.empty()) {

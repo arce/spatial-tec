@@ -387,7 +387,10 @@ private:
   // rules for MapWidget to use instead of a flat color (see ADR-0004,
   // include/core/spatial_style.hpp, and MapWidget::resolveFillColor /
   // MapWidget::drawRasterLayer for how those rules get applied at draw
-  // time). A layer with no matching .sty is left untouched.
+  // time), plus show_labels/label_field (ADR-0005) so a layer opens with
+  // the same on-map labels spatial_svg would draw from the same .sty --
+  // previously these two fields only ever got set by hand from the UI. A
+  // layer with no matching .sty is left untouched.
   void applySidecarStyle(Layer& layer, const std::string& filename) {
     Spatial::LayerStyle sty;
     if (!Spatial::loadSidecarStyle(filename, sty)) return;
@@ -398,6 +401,10 @@ private:
     if (sty.fill) layer.fill = true;
     layer.opacity = sty.opacity;
     layer.style_rules = sty.rules;
+    if (sty.show_labels) {
+      layer.show_labels = true;
+      if (!sty.label_field.empty()) layer.label_field = sty.label_field;
+    }
   }
 
   bool loadVectorCSV(const std::string& filename) {

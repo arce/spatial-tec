@@ -9,9 +9,11 @@
 #include <vector>
 
 #include "../include/core/spatial_csv.hpp"
+#include "../include/core/spatial_geom.hpp"
 #include "../include/core/spatial_string.hpp"
 #include "../include/core/spatial_style.hpp"
 #include "../include/core/spatial_types.hpp"
+#include "../include/viewer/multipart_geometry.hpp"
 
 struct BBox {
   double minx, miny, maxx, maxy;
@@ -130,6 +132,143 @@ std::string pointsToSVGPath(const std::vector<double>& coords,
   return path;
 }
 
+// Escapes the handful of characters that are special inside SVG/XML text
+// content and attribute values (&, <, >, "). Applied to every piece of
+// user/data-supplied text this program embeds in the output -- the map
+// title, legend titles/labels, and per-feature label text -- since none of
+// that is guaranteed not to contain them (an attribute value of
+// `Fish & Chips` or `<unknown>` would otherwise produce invalid SVG).
+std::string escapeXML(const std::string& s) {
+  std::string out;
+  out.reserve(s.size());
+  for (char c : s) {
+    switch (c) {
+      case '&': out += "&amp;"; break;
+      case '<': out += "&lt;"; break;
+      case '>': out += "&gt;"; break;
+      case '"': out += "&quot;"; break;
+      default: out += c;
+    }
+  }
+  return out;
+}
+
+// Computes the anchor point for a feature's on-map label: the point itself
+// for POINT/MULTIPOINT, the area-weighted centroid for POLYGON/
+// MULTIPOLYGON, the length-wise midpoint for LINESTRING/MULTILINESTRING.
+// For a MULTI* feature with more than one real part (e.g. a region made of
+// several separate islands), anchors on the largest part -- by area for
+// polygons, by length for lines -- instead of averaging across every part,
+// which could land the label outside all of them. This mirrors
+// Viewer::MapWidget::drawVectorLabels/largestPart
+// (include/viewer/map_widget.hpp) exactly, reusing the same core geometry
+// helpers and the same extractRange() from
+// include/viewer/multipart_geometry.hpp, so spatial_svg and spatial_viewer
+// place labels identically from the same .sty (see ADR-0005). Returns
+// false (leaving lx/ly untouched) if the feature has no coordinates or its
+// geometry type has no defined anchor rule.
+bool computeLabelAnchor(const Spatial::VectorFeature& feature, double& lx, double& ly) {
+  using Geom = Spatial::VectorFeature::GeometryType;
+  if (feature.coordinates.size() < 2) return false;
+
+  std::vector<double> largest_part_storage;
+  const std::vector<double>* anchor_coords = &feature.coordinates;
+  if (!feature.part_starts.empty()) {
+    auto ranges = featurePartRanges(feature);
+    size_t best = 0;
+    double best_measure = -1.0;
+    for (size_t i = 0; i < ranges.size(); ++i) {
+      double measure = 0.0;  // MULTIPOINT: first part wins (no natural "biggest" point).
+      if (feature.type == Geom::MULTIPOLYGON) {
+        measure = polygonArea(Viewer::extractRange(feature, ranges[i]));
+      } else if (feature.type == Geom::MULTILINESTRING) {
+        measure = lineLength(Viewer::extractRange(feature, ranges[i]));
+      }
+      if (measure > best_measure) {
+        best_measure = measure;
+        best = i;
+      }
+    }
+    largest_part_storage = Viewer::extractRange(feature, ranges[best]);
+    anchor_coords = &largest_part_storage;
+  }
+
+  if (feature.type == Geom::POINT || feature.type == Geom::MULTIPOINT) {
+    lx = (*anchor_coords)[0];
+    ly = (*anchor_coords)[1];
+    return true;
+  } else if ((feature.type == Geom::POLYGON || feature.type == Geom::MULTIPOLYGON) &&
+             anchor_coords->size() >= 6) {
+    polygonCentroid(*anchor_coords, lx, ly);
+    return true;
+  } else if (feature.type == Geom::LINESTRING || feature.type == Geom::MULTILINESTRING) {
+    lineMidpoint(*anchor_coords, lx, ly);
+    return true;
+  }
+  return false;
+}
+
+// Draws one layer's legend as a self-contained <g>: a background box, a
+// bold title, and one color swatch + label row per class rule. Does
+// nothing (returns an empty string) for a layer with legend disabled or no
+// classification rules to show -- a plain-fill layer has nothing to put in
+// a legend. corner_offsets accumulates how much vertical space has already
+// been used in each named corner, so multiple layers requesting the same
+// corner stack instead of overlapping (see ADR-0005, Decision 3).
+std::string renderLegendBox(const Spatial::LayerStyle& layer_info, int canvas_width, int canvas_height,
+                            std::map<std::string, double>& corner_offsets) {
+  if (!layer_info.legend_enabled || layer_info.rules.empty()) return "";
+
+  std::string title = layer_info.legend_title;
+  if (title.empty()) {
+    title = std::filesystem::path(layer_info.file).stem().string();
+  }
+
+  const double swatch = 12, row_h = 18, pad = 8, title_h = 20, gap = 10, margin = 15;
+  size_t n = layer_info.rules.size();
+
+  // Crude width estimate from the longest label/title (~6.2px/char at
+  // font-size 11-12) -- generous enough not to clip in the common case
+  // without needing an actual text-measurement pass.
+  size_t max_chars = title.size();
+  for (const auto& rule : layer_info.rules) max_chars = std::max(max_chars, rule.label.size());
+  double box_w = std::max(120.0, max_chars * 6.2 + swatch + pad * 3);
+  double box_h = title_h + n * row_h + pad * 2;
+
+  std::string position = layer_info.legend_position.empty() ? "bottom-right" : layer_info.legend_position;
+  double& offset = corner_offsets[position];
+
+  bool from_right = position.find("right") != std::string::npos;
+  bool from_bottom = position.find("bottom") != std::string::npos;
+  double box_x = from_right ? (canvas_width - margin - box_w) : margin;
+  double box_y = from_bottom ? (canvas_height - margin - box_h - offset) : (margin + offset);
+
+  offset += box_h + gap;
+
+  std::string svg;
+  svg += "  <g class=\"legend\">\n";
+  svg += "    <rect x=\"" + std::to_string(box_x) + "\" y=\"" + std::to_string(box_y) + "\" ";
+  svg += "width=\"" + std::to_string(box_w) + "\" height=\"" + std::to_string(box_h) + "\" ";
+  svg += "fill=\"#FFFFFF\" fill-opacity=\"0.9\" stroke=\"#999999\" stroke-width=\"1\"/>\n";
+  svg += "    <text x=\"" + std::to_string(box_x + pad) + "\" y=\"" + std::to_string(box_y + pad + 10) + "\" ";
+  svg += "font-size=\"12\" font-weight=\"bold\" font-family=\"sans-serif\" fill=\"#222222\">" +
+         escapeXML(title) + "</text>\n";
+
+  for (size_t i = 0; i < n; ++i) {
+    const auto& rule = layer_info.rules[i];
+    double row_y = box_y + title_h + pad + i * row_h;
+    svg += "    <rect x=\"" + std::to_string(box_x + pad) + "\" y=\"" + std::to_string(row_y) + "\" ";
+    svg += "width=\"" + std::to_string(swatch) + "\" height=\"" + std::to_string(swatch) + "\" ";
+    svg += "fill=\"" + rule.color + "\" stroke=\"#666666\" stroke-width=\"0.5\"/>\n";
+    svg += "    <text x=\"" + std::to_string(box_x + pad + swatch + 6) + "\" y=\"" +
+           std::to_string(row_y + swatch - 1) + "\" font-size=\"11\" font-family=\"sans-serif\" fill=\"#222222\">" +
+           escapeXML(rule.label) + "</text>\n";
+  }
+
+  svg += "  </g>\n";
+  return svg;
+}
+
 // Picks the fill color for a feature: if the layer has classification
 // rules (from a .sty file, hand-written -style file, or an auto-detected
 // sidecar), scans the feature's attributes for one whose value falls in a
@@ -196,7 +335,7 @@ std::string generateSVG(const std::vector<Spatial::LayerStyle>& layers, int widt
   if (!title.empty()) {
     svg +=
         "  <text x=\"50%\" y=\"30\" text-anchor=\"middle\" font-size=\"20\" font-weight=\"bold\">" +
-        title + "</text>\n";
+        escapeXML(title) + "</text>\n";
   }
 
   for (const auto& layer_info : layers) {
@@ -247,7 +386,46 @@ std::string generateSVG(const std::vector<Spatial::LayerStyle>& layers, int widt
         svg += "stroke-opacity=\"" + std::to_string(layer_info.opacity) + "\" ";
         svg += "/>\n";
       }
+
+      // Per-feature label (ADR-0005): only for vector layers with
+      // show_labels/label_field set (via a .sty, hand-written or sidecar --
+      // there's no command-line equivalent, since a label always comes from
+      // an attribute column that only the .sty knows about).
+      if (layer_info.show_labels && !layer_info.label_field.empty()) {
+        auto attr_it = feature.attributes.find(layer_info.label_field);
+        if (attr_it != feature.attributes.end() && !attr_it->second.empty()) {
+          double lx = 0, ly = 0;
+          if (computeLabelAnchor(feature, lx, ly)) {
+            bool is_point = (feature.type == Spatial::VectorFeature::GeometryType::POINT ||
+                             feature.type == Spatial::VectorFeature::GeometryType::MULTIPOINT);
+            std::string pt = transformer.transform(lx, ly);
+            size_t sp = pt.find(' ');
+            std::string tx = pt.substr(0, sp);
+            std::string ty = pt.substr(sp + 1);
+
+            // A white stroke behind the black fill acts as a halo so the
+            // label stays legible over any fill color underneath -- the
+            // SVG equivalent of the multi-offset halo
+            // Viewer::MapWidget::drawLabelText draws by hand for FLTK,
+            // done here in one element via paint-order.
+            svg += "  <text x=\"" + tx + "\" y=\"" + ty + "\" ";
+            if (is_point) {
+              svg += "dx=\"7\" text-anchor=\"start\" ";
+            } else {
+              svg += "text-anchor=\"middle\" ";
+            }
+            svg += "font-size=\"11\" font-family=\"sans-serif\" fill=\"black\" ";
+            svg += "stroke=\"white\" stroke-width=\"3\" paint-order=\"stroke\">";
+            svg += escapeXML(attr_it->second) + "</text>\n";
+          }
+        }
+      }
     }
+  }
+
+  std::map<std::string, double> corner_offsets;
+  for (const auto& layer_info : layers) {
+    svg += renderLegendBox(layer_info, width, height, corner_offsets);
   }
 
   double map_width = global_bbox.width();
@@ -273,7 +451,8 @@ std::string generateSVG(const std::vector<Spatial::LayerStyle>& layers, int widt
 }
 
 void printUsage() {
-  std::cerr << "spatial_svg - Generate SVG map from vector data\n\n";
+  std::cerr << "spatial_svg - Generate SVG map from vector data\n";
+  std::cerr << "(with per-layer legend and per-feature labels from .sty -- see ADR-0005)\n\n";
   std::cerr << "Usage:\n";
   std::cerr << "  spatial_svg <output> -style <file>\n";
   std::cerr << "  spatial_svg <output> -layer <file> [options]\n\n";
@@ -291,11 +470,22 @@ void printUsage() {
   std::cerr << "  -height <pixels>     SVG height (default: 600)\n";
   std::cerr << "  -background <color>  Background color (default: white)\n";
   std::cerr << "  -title <text>        Map title\n\n";
+  std::cerr << "Legend and per-feature labels (ADR-0005) come entirely from each layer's\n";
+  std::cerr << ".sty -- there is no command-line flag for them, since both need data (class\n";
+  std::cerr << "colors, an attribute column) that only spatial_colormap's output has. A\n";
+  std::cerr << "legend is drawn per layer that has layer.N.legend.enabled=true and at least\n";
+  std::cerr << "one class; stacked in the corner given by layer.N.legend.position\n";
+  std::cerr << "(top-left/top-right/bottom-left/bottom-right, default bottom-right). Labels\n";
+  std::cerr << "are drawn per layer that has layer.N.show_labels=true and layer.N.label_field\n";
+  std::cerr << "set -- see 'spatial_colormap -help' for -show-labels/-label-field/-legend-position.\n\n";
   std::cerr << "Examples:\n";
   std::cerr << "  spatial_svg map.svg -style style.sty\n";
   std::cerr << "  spatial_svg map.svg -layer countries.csv -color blue -fill lightblue\n";
   std::cerr << "  spatial_colormap countries.csv -attribute population\n";
-  std::cerr << "  spatial_svg map.svg -layer countries.csv   # picks up countries.sty automatically\n";
+  std::cerr << "  spatial_svg map.svg -layer countries.csv   # picks up countries.sty automatically\n\n";
+  std::cerr << "  # With a legend and per-feature labels:\n";
+  std::cerr << "  spatial_colormap countries.csv -attribute population -show-labels -label-field name\n";
+  std::cerr << "  spatial_svg map.svg -layer countries.csv -title \"Population\"\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -339,6 +529,11 @@ int main(int argc, char* argv[]) {
         layer.opacity = sidecar.opacity;
         layer.point_size = sidecar.point_size;
         layer.rules = sidecar.rules;
+        layer.legend_enabled = sidecar.legend_enabled;
+        layer.legend_title = sidecar.legend_title;
+        layer.legend_position = sidecar.legend_position;
+        layer.show_labels = sidecar.show_labels;
+        layer.label_field = sidecar.label_field;
         std::cout << "Using style: " << Spatial::sidecarStylePath(layer.file) << "\n";
       }
 

@@ -5,7 +5,8 @@
 // spatial_viewer. Both consumers used to carry their own copy of this
 // parser; it's extracted here so a change to the format only has to be
 // made once. See ADR-0004 (adr/0004-raster-colormap-and-sty-format.md) for
-// the design rationale.
+// the design rationale, and ADR-0005
+// (adr/0005-svg-legend-and-labels.md) for the legend/label fields below.
 //
 // FORMAT
 // ------
@@ -26,6 +27,11 @@
 //   layer.1.class.0.color=#FFFFB2
 //   layer.1.class.0.label=0 - 100
 //   ...
+//   layer.1.legend.enabled=true
+//   layer.1.legend.title=Population
+//   layer.1.legend.position=bottom-right
+//   layer.1.show_labels=true
+//   layer.1.label_field=name
 //
 // When "class.*" entries are present, a consumer that draws per-feature
 // (spatial_svg) or per-cell (spatial_viewer) symbology is expected to pick
@@ -35,6 +41,11 @@
 // ahead of time by spatial_colormap and written out as a (possibly large)
 // list of narrow classes -- see ADR-0003/ADR-0004 for why "continuous"
 // classification is just many equal-width classes, not interpolation.
+//
+// "legend.*" and "show_labels"/"label_field" are namespaced under
+// "layer.N." like everything else (ADR-0005) -- a legend or label setting
+// always belongs to one specific layer, so a hand-written multi-layer
+// -style file can turn each on/off and position each independently.
 //
 // SIDECAR CONVENTION
 // -------------------
@@ -74,14 +85,35 @@ struct LayerStyle {
   double opacity = 0.8;
   double point_size = 5;
   std::vector<StyleRule> rules;
+
+  // Legend metadata (ADR-0005), parsed from "layer.N.legend.*". A consumer
+  // that draws a legend (spatial_svg) uses these to decide whether to draw
+  // one for this layer, its heading, and which corner to stack it in.
+  // legend_title falls back to the layer's classified attribute (or the
+  // data file's base name) when empty -- see spatial_svg.cpp.
+  bool legend_enabled = true;
+  std::string legend_title;
+  std::string legend_position = "bottom-right";
+
+  // Per-feature label metadata (ADR-0005), parsed from
+  // "layer.N.show_labels"/"layer.N.label_field". show_labels=true tells a
+  // consumer to draw label_field's value next to/over each feature
+  // (vector) or cell (raster). Same meaning and field names as
+  // Viewer::Layer::show_labels/label_field, which this mirrors so
+  // spatial_svg and spatial_viewer render labels the same way from the
+  // same .sty.
+  bool show_labels = false;
+  std::string label_field;
 };
 
 // Parses a .sty file, returning one LayerStyle per "layer.N.*" block found
 // (ordered by N). Returns an empty vector if the file can't be opened or
-// has no layer.* keys. Unrecognized keys (legend.*, layer.N.attribute=,
-// layer.N.palette=, etc. -- metadata spatial_colormap writes for its own
-// documentation purposes) are silently ignored, same as before this was
-// shared code.
+// has no layer.* keys. Unrecognized keys under layer.N. (attribute=,
+// palette=, etc. -- metadata spatial_colormap writes for its own
+// documentation purposes) are silently ignored; layer.N.legend.* and
+// layer.N.show_labels/label_field are parsed below (ADR-0005). A key with
+// no "layer." prefix at all (e.g. a leftover from a pre-ADR-0005 file that
+// wrote a bare "legend.*") is ignored the same way it always was.
 inline std::vector<LayerStyle> parseStyleFile(const std::string& filename) {
   std::vector<LayerStyle> layers;
   std::ifstream file(filename);
@@ -134,6 +166,22 @@ inline std::vector<LayerStyle> parseStyleFile(const std::string& filename) {
       try { layer.opacity = std::stod(value); } catch (...) {}
     } else if (field == "point_size") {
       try { layer.point_size = std::stod(value); } catch (...) {}
+    } else if (field == "show_labels") {
+      layer.show_labels = (value == "true" || value == "1" || value == "yes");
+    } else if (field == "label_field") {
+      layer.label_field = value;
+    } else if (field.rfind("legend.", 0) == 0) {
+      std::string legend_field = field.substr(7);
+      if (legend_field == "enabled") {
+        layer.legend_enabled = (value == "true" || value == "1" || value == "yes");
+      } else if (legend_field == "title") {
+        layer.legend_title = value;
+      } else if (legend_field == "position") {
+        layer.legend_position = value;
+      }
+      // Other legend.* subkeys are not written anymore (see ADR-0005,
+      // Decision 2) -- no renderer consumes them, so there's nothing to
+      // parse here.
     } else if (field.rfind("class.", 0) == 0) {
       size_t dot_class = field.find('.');
       std::string class_part = field.substr(dot_class + 1);
@@ -164,9 +212,10 @@ inline std::vector<LayerStyle> parseStyleFile(const std::string& filename) {
         rule.label = value;
       }
     }
-    // Other fields (choropleth, attribute, num_classes, method, palette,
-    // legend.*) are informational metadata written by spatial_colormap;
-    // no consumer needs them to render, so they're intentionally ignored.
+    // Other fields (choropleth, attribute, num_classes, method, palette)
+    // are informational metadata written by spatial_colormap; no consumer
+    // needs them to render, so they're intentionally ignored. legend.* and
+    // show_labels/label_field are handled above (ADR-0005).
   }
 
   for (auto& [num, layer] : layer_map) {
