@@ -1,8 +1,3 @@
-// include/core/spatial_geom.hpp
-//
-// Primitivas geometricas compartidas (point-in-polygon, distancias
-// punto-punto/segmento/linea y serializacion a WKT). Consolidadas desde
-// copias identicas (o casi identicas) repetidas en 4-11 archivos de src/.
 #pragma once
 #include "spatial_types.hpp"
 #include <string>
@@ -12,7 +7,6 @@
 #include <limits>
 #include <algorithm>
 
-// Ray casting. polygon es una lista plana [x0,y0,x1,y1,...].
 inline bool pointInPolygon(double x, double y, const std::vector<double>& polygon) {
     bool inside = false;
     int n = static_cast<int>(polygon.size() / 2);
@@ -58,8 +52,6 @@ inline double pointToSegmentDistance(double px, double py,
     return pointToPointDistance(px, py, cx, cy);
 }
 
-// Distancia minima de un punto a cualquier segmento de una polilinea plana
-// [x0,y0,x1,y1,...].
 inline double pointToLineDistance(double px, double py, const std::vector<double>& line) {
     if (line.size() < 2) return std::numeric_limits<double>::max();
     if (line.size() == 2) {
@@ -76,10 +68,6 @@ inline double pointToLineDistance(double px, double py, const std::vector<double
     return min_dist;
 }
 
-// Centroide ponderado por area de un anillo (posiblemente abierto)
-// [x0,y0,x1,y1,...]. Usado para posicionar la etiqueta de un POLYGON en su
-// centro. Si el area es ~0 (anillo degenerado: vertices colineales o
-// duplicados), retrocede al promedio simple de los vertices.
 inline void polygonCentroid(const std::vector<double>& coords, double& cx, double& cy) {
     int n = static_cast<int>(coords.size() / 2);
     cx = 0.0;
@@ -112,9 +100,6 @@ inline void polygonCentroid(const std::vector<double>& coords, double& cx, doubl
     cy = cya / (6.0 * area);
 }
 
-// Punto a la mitad (por longitud recorrida, no por indice de vertice) de
-// una polilinea [x0,y0,x1,y1,...]. Usado para posicionar la etiqueta de un
-// LINESTRING.
 inline void lineMidpoint(const std::vector<double>& coords, double& mx, double& my) {
     int n = static_cast<int>(coords.size() / 2);
     if (n == 0) {
@@ -153,10 +138,6 @@ inline void lineMidpoint(const std::vector<double>& coords, double& mx, double& 
     my = coords[(n - 1) * 2 + 1];
 }
 
-// Area (shoelace, siempre positiva) de un anillo posiblemente abierto
-// [x0,y0,x1,y1,...]. Usada por spatial_viewer para elegir la parte mas
-// grande de un MULTIPOLYGON (p.ej. la isla principal) al posicionar su
-// etiqueta -- ver include/viewer/multipart_geometry.hpp.
 inline double polygonArea(const std::vector<double>& coords) {
     int n = static_cast<int>(coords.size() / 2);
     double area2 = 0.0;
@@ -167,9 +148,6 @@ inline double polygonArea(const std::vector<double>& coords) {
     return std::fabs(area2) / 2.0;
 }
 
-// Longitud total de una polilinea [x0,y0,x1,y1,...]. Usada por
-// spatial_viewer para elegir la parte mas larga de un MULTILINESTRING al
-// posicionar su etiqueta.
 inline double lineLength(const std::vector<double>& coords) {
     int n = static_cast<int>(coords.size() / 2);
     double total = 0.0;
@@ -180,12 +158,6 @@ inline double lineLength(const std::vector<double>& coords) {
     return total;
 }
 
-// Rangos [begin,end) de indice de PAR de coordenada para cada parte de una
-// feature, usando VectorFeature::part_starts cuando esta presente. Una
-// feature sin part_starts (todo POINT/LINESTRING/POLYGON, y cualquier
-// Multi* con una sola parte real) entrega un unico rango que cubre todo
-// `coordinates` -- asi el llamador no necesita un camino separado para el
-// caso "no es multi-parte".
 inline std::vector<std::pair<size_t, size_t>> featurePartRanges(const Spatial::VectorFeature& feature) {
     std::vector<std::pair<size_t, size_t>> ranges;
     size_t total_pairs = feature.coordinates.size() / 2;
@@ -201,12 +173,6 @@ inline std::vector<std::pair<size_t, size_t>> featurePartRanges(const Spatial::V
     return ranges;
 }
 
-// Serializa una VectorFeature a WKT.
-//
-// close_ring: si es true, los POLYGON repiten el primer vertice al final
-// del anillo (WKT valido / anillo cerrado). La mayoria de los programas
-// escriben el anillo tal cual viene almacenado (sin cerrar); spatial_union
-// es la excepcion y pasa close_ring=true.
 inline std::string geometryToWKT(const Spatial::VectorFeature& feature, bool close_ring = false) {
     std::string result;
     switch (feature.type) {
@@ -241,12 +207,6 @@ inline std::string geometryToWKT(const Spatial::VectorFeature& feature, bool clo
             result += "))";
             break;
         }
-        // MULTIPOINT/MULTILINESTRING/MULTIPOLYGON: featurePartRanges() gives
-        // the real part boundaries recorded in feature.part_starts by
-        // spatial_csv.hpp's parser, so each part (island/segment/point) is
-        // written out as its own separate element -- not merged into one,
-        // the way an earlier version of this switch (and every other
-        // MULTI*-reading tool before part_starts existed) had to.
         case Spatial::VectorFeature::GeometryType::MULTIPOINT: {
             result = "MULTIPOINT(";
             bool first = true;

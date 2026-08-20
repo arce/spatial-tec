@@ -1,4 +1,3 @@
-// include/core/spatial_csv.hpp
 #pragma once
 #include "spatial_types.hpp"
 #include <fstream>
@@ -12,15 +11,15 @@ public:
     bool read(const std::string& filename, VectorDataset& dataset) {
         std::ifstream file(filename);
         if (!file.is_open()) return false;
-        
+
         std::string line;
         bool is_header = true;
-        
+
         dataset.min_x = std::numeric_limits<double>::max();
         dataset.min_y = std::numeric_limits<double>::max();
         dataset.max_x = std::numeric_limits<double>::lowest();
         dataset.max_y = std::numeric_limits<double>::lowest();
-        
+
 		while (std::getline(file, line)) {
 		            line = trim(line);
 		            if (line.empty() || line[0] == '#') {
@@ -29,8 +28,7 @@ public:
 		                }
 		                continue;
 		            }
-            
-		            // La primera línea que no sea comentario ES la cabecera
+
 		            if (is_header) {
 		                dataset.columns = splitCSV(line);
 		                for (const auto& col : dataset.columns) {
@@ -40,24 +38,23 @@ public:
 		                        break;
 		                    }
 		                }
-		                // Si no encontró una columna explícita, usa la última por defecto
 		                if (dataset.geometry_column.empty() && !dataset.columns.empty()) {
 		                    dataset.geometry_column = dataset.columns.back();
 		                }
 		                is_header = false;
-		                continue; // Saltar a la siguiente línea (datos)
+		                continue;
 		            }
-            
+
 		            VectorFeature feature;
 		            std::vector<std::string> values = splitCSV(line);
-            
+
 		            if (values.size() >= dataset.columns.size()) {
 		                for (size_t i = 0; i < dataset.columns.size(); ++i) {
 		                    if (dataset.columns[i] != dataset.geometry_column) {
 		                        feature.attributes[dataset.columns[i]] = values[i];
 		                    }
 		                }
-                
+
 		                int geom_index = -1;
 		                for (size_t i = 0; i < dataset.columns.size(); ++i) {
 		                    if (dataset.columns[i] == dataset.geometry_column) {
@@ -65,25 +62,25 @@ public:
 		                        break;
 		                    }
 		                }
-                
+
 		                if (geom_index >= 0 && static_cast<size_t>(geom_index) < values.size()) {
 		                    parseGeometry(values[geom_index], feature);
 		                }
-                
+
 		                updateStats(feature, dataset);
 		                dataset.features.push_back(feature);
 		            }
 		        }
-        
+
         dataset.feature_count = dataset.features.size();
         calculateTypeCounts(dataset);
         return true;
     }
-    
+
 private:
     void parseGeometry(const std::string& geom_str, VectorFeature& feature) {
         std::string str = trim(geom_str);
-        
+
         if (str.find("POINT") == 0) {
             feature.type = VectorFeature::GeometryType::POINT;
             auto coords = extractCoordinates(str);
@@ -130,12 +127,12 @@ private:
             for (const auto& c : coords) {
                 feature.coordinates.push_back(std::stod(trim(c)));
             }
-            feature.type = (feature.coordinates.size() == 2) ? 
-                          VectorFeature::GeometryType::POINT : 
+            feature.type = (feature.coordinates.size() == 2) ?
+                          VectorFeature::GeometryType::POINT :
                           VectorFeature::GeometryType::LINESTRING;
         }
     }
-    
+
     void updateStats(const VectorFeature& feature, VectorDataset& dataset) {
         for (size_t i = 0; i < feature.coordinates.size(); i += 2) {
             double x = feature.coordinates[i];
@@ -147,7 +144,7 @@ private:
             dataset.has_bbox = true;
         }
     }
-    
+
     void calculateTypeCounts(VectorDataset& dataset) {
         dataset.type_counts.clear();
         for (const auto& f : dataset.features) {
@@ -163,7 +160,7 @@ private:
             dataset.type_counts[type_name]++;
         }
     }
-    
+
     std::vector<std::string> extractCoordinates(const std::string& str) {
         size_t start = str.find('(');
         size_t end = str.find(')');
@@ -173,7 +170,7 @@ private:
         }
         return {};
     }
-    
+
     std::vector<std::string> extractPoints(const std::string& str) {
         size_t start = str.find('(');
         size_t end = str.find(')');
@@ -183,7 +180,7 @@ private:
         }
         return {};
     }
-    
+
     std::vector<std::string> extractPolygonPoints(const std::string& str) {
         size_t start = str.find('(');
         size_t end = str.rfind(')');
@@ -196,12 +193,6 @@ private:
         return {};
     }
 
-    // Extracts the content between a MULTI* geometry's OUTERMOST parens and
-    // splits it at paren-depth-0 commas, so "((0 0, 0 1)), ((5 5, 6 6))"
-    // becomes ["((0 0, 0 1))", "((5 5, 6 6))"] -- one entry per real part
-    // (island/segment/point) -- instead of extractPolygonPoints' approach
-    // of stripping every paren level at once, which would merge every part
-    // into a single ring with no way to tell them apart afterwards.
     std::vector<std::string> splitTopLevelGroups(const std::string& str) {
         size_t start = str.find('(');
         size_t end = str.rfind(')');
@@ -231,11 +222,6 @@ private:
         return groups;
     }
 
-    // One part's text, e.g. "(1 2)" (a MULTIPOINT point), "0 0, 1 1" (a
-    // MULTILINESTRING part) or "((0 0, 0 1, 1 1, 1 0, 0 0))" (a MULTIPOLYGON
-    // part -- holes inside it still get merged into one outward ring, same
-    // simplification a plain POLYGON already gets). Strips every remaining
-    // paren and reads out "x y" pairs.
     std::vector<double> parseGroupPoints(const std::string& group) {
         std::string inner = group;
         inner.erase(std::remove(inner.begin(), inner.end(), '('), inner.end());
@@ -255,12 +241,6 @@ private:
         return coords;
     }
 
-    // Shared by the MULTIPOINT/MULTILINESTRING/MULTIPOLYGON branches of
-    // parseGeometry: appends every part's points to feature.coordinates
-    // (kept as one flat list, same as always) while recording where each
-    // part started in feature.part_starts -- empty (not size 1) when the
-    // geometry turned out to have only one real part, since coordinates
-    // alone is already unambiguous then.
     void parseMultiParts(const std::string& str, VectorFeature& feature) {
         for (const auto& group : splitTopLevelGroups(str)) {
             auto pts = parseGroupPoints(group);
@@ -283,10 +263,6 @@ private:
         for (size_t i = 0; i < line.size(); ++i) {
             char c = line[i];
             if (c == '"') {
-                // A doubled quote ("") inside a quoted field is the CSV
-                // escape for one literal quote character -- it must be
-                // kept, not just used to flip in_quotes, or every embedded
-                // quote in an attribute value silently disappears.
                 if (in_quotes && i + 1 < line.size() && line[i + 1] == '"') {
                     current += '"';
                     ++i;
@@ -309,7 +285,7 @@ private:
         result.push_back(trim(current));
         return result;
     }
-    
+
     std::vector<std::string> split(const std::string& s, char delimiter) {
         std::vector<std::string> tokens;
         std::string token;
@@ -320,13 +296,13 @@ private:
         }
         return tokens;
     }
-    
+
     std::string trim(const std::string& s) {
         size_t start = s.find_first_not_of(" \t\n\r");
         size_t end = s.find_last_not_of(" \t\n\r");
         return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
     }
-    
+
     std::string toLower(const std::string& s) {
         std::string result = s;
         std::transform(result.begin(), result.end(), result.begin(), ::tolower);
@@ -334,4 +310,4 @@ private:
     }
 };
 
-} // namespace Spatial
+}

@@ -7,6 +7,7 @@
 #include <sstream>
 
 #include "../include/core/ascii_grid.hpp"
+#include "../include/core/spatial_csv.hpp"
 #include "../include/core/spatial_geom.hpp"
 #include "../include/core/spatial_io.hpp"
 #include "../include/core/spatial_string.hpp"
@@ -31,51 +32,42 @@ struct BBox {
   }
 };
 
-std::vector<double> readPolygonFromCSV(const std::string& filename) {
-  std::ifstream file(filename);
-  if (!file.is_open())
-    return {};
+// Reads every POLYGON/MULTIPOLYGON feature from the given CSV as a list of
+// independent rings (one entry per ring/part, via featurePartRanges -- see
+// spatial_geom.hpp), using the shared SpatialCSVReader. Replaces a previous
+// hand-rolled parser (naive split(line, ',') on the raw CSV line) that
+// broke on any WKT with internal commas -- since the comma split doesn't
+// respect parentheses, a token like "POLYGON(0 0" never contained a
+// matching ")" and the polygon was never extracted at all (see the fix to
+// the identical bug in spatial_clip_vector.cpp for the full writeup).
+std::vector<std::vector<double>> readPolygonsFromCSV(const std::string& filename) {
+  std::vector<std::vector<double>> polygons;
 
-  std::string line;
-  std::vector<double> polygon;
-  bool is_header = true;
+  Spatial::SpatialCSVReader reader;
+  Spatial::VectorDataset dataset;
+  if (!reader.read(filename, dataset)) {
+    return polygons;
+  }
 
-  while (std::getline(file, line)) {
-    line = trim(line);
-    if (line.empty() || line[0] == '#')
-      continue;
-
-    if (is_header) {
-      is_header = false;
+  for (const auto& feature : dataset.features) {
+    if (feature.type != Spatial::VectorFeature::GeometryType::POLYGON &&
+        feature.type != Spatial::VectorFeature::GeometryType::MULTIPOLYGON) {
       continue;
     }
-
-    auto values = split(line, ',');
-    for (const auto& val : values) {
-      std::string v = trim(val);
-      if (v.find("POLYGON") == 0) {
-        size_t start = v.find('(');
-        size_t end = v.rfind(')');
-        if (start != std::string::npos && end != std::string::npos) {
-          std::string inner = v.substr(start + 1, end - start - 1);
-          inner.erase(std::remove(inner.begin(), inner.end(), '('), inner.end());
-          inner.erase(std::remove(inner.begin(), inner.end(), ')'), inner.end());
-
-          auto points = split(inner, ',');
-          for (const auto& p : points) {
-            auto coords = split(trim(p), ' ');
-            if (coords.size() >= 2) {
-              polygon.push_back(std::stod(coords[0]));
-              polygon.push_back(std::stod(coords[1]));
-            }
-          }
-        }
-        break;
+    for (const auto& range : featurePartRanges(feature)) {
+      std::vector<double> ring;
+      ring.reserve((range.second - range.first) * 2);
+      for (size_t p = range.first; p < range.second; ++p) {
+        ring.push_back(feature.coordinates[p * 2]);
+        ring.push_back(feature.coordinates[p * 2 + 1]);
+      }
+      if (!ring.empty()) {
+        polygons.push_back(std::move(ring));
       }
     }
   }
 
-  return polygon;
+  return polygons;
 }
 
 void clipRasterByBBox(const Spatial::RasterDataset& input, Spatial::RasterDataset& output,
@@ -126,21 +118,23 @@ void clipRasterByBBox(const Spatial::RasterDataset& input, Spatial::RasterDatase
 }
 
 void clipRasterByPolygon(const Spatial::RasterDataset& input, Spatial::RasterDataset& output,
-                         const std::vector<double>& polygon, bool invert = false) {
+                         const std::vector<std::vector<double>>& polygons, bool invert = false) {
   BBox poly_bbox;
   bool first = true;
-  for (size_t i = 0; i < polygon.size(); i += 2) {
-    double x = polygon[i];
-    double y = polygon[i + 1];
-    if (first) {
-      poly_bbox.minx = poly_bbox.maxx = x;
-      poly_bbox.miny = poly_bbox.maxy = y;
-      first = false;
-    } else {
-      poly_bbox.minx = std::min(poly_bbox.minx, x);
-      poly_bbox.miny = std::min(poly_bbox.miny, y);
-      poly_bbox.maxx = std::max(poly_bbox.maxx, x);
-      poly_bbox.maxy = std::max(poly_bbox.maxy, y);
+  for (const auto& polygon : polygons) {
+    for (size_t i = 0; i < polygon.size(); i += 2) {
+      double x = polygon[i];
+      double y = polygon[i + 1];
+      if (first) {
+        poly_bbox.minx = poly_bbox.maxx = x;
+        poly_bbox.miny = poly_bbox.maxy = y;
+        first = false;
+      } else {
+        poly_bbox.minx = std::min(poly_bbox.minx, x);
+        poly_bbox.miny = std::min(poly_bbox.miny, y);
+        poly_bbox.maxx = std::max(poly_bbox.maxx, x);
+        poly_bbox.maxy = std::max(poly_bbox.maxy, y);
+      }
     }
   }
 
@@ -156,7 +150,13 @@ void clipRasterByPolygon(const Spatial::RasterDataset& input, Spatial::RasterDat
       double y =
           output.yllcorner + (output.nrows - 1 - r) * output.cellsize + output.cellsize / 2.0;
 
-      bool inside = pointInPolygon(x, y, polygon);
+      bool inside = false;
+      for (const auto& polygon : polygons) {
+        if (pointInPolygon(x, y, polygon)) {
+          inside = true;
+          break;
+        }
+      }
 
       if (invert ? inside : !inside) {
         output.at(r, c) = output.nodata_value;
@@ -173,7 +173,10 @@ void printUsage() {
   std::cerr << "Usage: spatial_clip_raster <input> <output> [options]\n\n";
   std::cerr << "Options:\n";
   std::cerr << "  -bbox <minx> <miny> <maxx> <maxy>   Clip by bounding box\n";
-  std::cerr << "  -polygon <file>                     Clip by polygon (mask)\n";
+  std::cerr << "  -polygon <file>                     Clip by polygon(s) from CSV (mask) -- every\n";
+  std::cerr << "                                       POLYGON/MULTIPOLYGON row is tested\n";
+  std::cerr << "                                       independently, a cell inside any one of\n";
+  std::cerr << "                                       them is kept\n";
   std::cerr << "  -clip_to <file>                     Clip to extent of another raster\n";
   std::cerr << "  -invert                            Invert mask\n\n";
   std::cerr << "Examples:\n";
@@ -242,13 +245,17 @@ int main(int argc, char* argv[]) {
               << bbox.maxy << "\n";
     clipRasterByBBox(dataset, output, bbox);
   } else if (use_polygon) {
-    auto polygon = readPolygonFromCSV(polygon_file);
-    if (polygon.empty()) {
-      std::cerr << "Error: Could not read polygon from " << polygon_file << "\n";
+    auto polygons = readPolygonsFromCSV(polygon_file);
+    if (polygons.empty()) {
+      std::cerr << "Error: Could not read any POLYGON/MULTIPOLYGON feature from " << polygon_file
+                << "\n";
       return 1;
     }
-    std::cout << "Clipping by polygon with " << polygon.size() / 2 << " vertices\n";
-    clipRasterByPolygon(dataset, output, polygon, invert);
+    size_t total_vertices = 0;
+    for (const auto& p : polygons) total_vertices += p.size() / 2;
+    std::cout << "Clipping by " << polygons.size() << " polygon(s), " << total_vertices
+              << " vertices total\n";
+    clipRasterByPolygon(dataset, output, polygons, invert);
   } else if (use_clip_to) {
     std::cerr << "Error: -clip_to not yet implemented\n";
     return 1;

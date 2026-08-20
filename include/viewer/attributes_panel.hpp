@@ -15,11 +15,6 @@
 
 namespace Viewer {
 
-// Read-only "Attribute / Value" grid for whatever feature is currently
-// selected (via a map click or a table row click). Only shows columns that
-// are currently visible in the attribute table (i.e. not in
-// Layer::hidden_columns), per the Table/Hide column and Table/Show all
-// columns menu options.
 class AttributesPanel : public Fl_Table {
 public:
   AttributesPanel(int X, int Y, int W, int H, const char* L = 0)
@@ -36,8 +31,6 @@ public:
     col_resize_min(50);
   }
 
-  // Shows the given feature's visible attributes. `layer` may be null to
-  // clear the panel.
   void showFeature(Layer* layer, int feature_index) {
     layer_ = layer;
     feature_index_ = feature_index;
@@ -50,9 +43,6 @@ public:
     refresh();
   }
 
-  // Rebuilds the row list from the current layer/feature. Safe to call
-  // whenever column visibility changes elsewhere (e.g. Table/Hide column)
-  // to keep this panel in sync with whatever is currently displayed.
   void refresh() {
     entries_.clear();
 
@@ -73,9 +63,6 @@ public:
       }
     } else if (layer_ && layer_->type == LayerType::RASTER && layer_->raster_data.has_rat &&
                feature_index_ >= 0 && feature_index_ < (int)layer_->raster_data.rat_rows.size()) {
-      // feature_index_ is a RAT row index here (one row per class), not a
-      // per-cell feature -- see MapWidget::rasterRatRowAt() / TableWidget's
-      // raster branch of updateTableData(), which use the same indexing.
       const auto& row = layer_->raster_data.rat_rows[feature_index_];
       for (const auto& col : layer_->raster_data.rat_columns) {
         if (layer_->hidden_columns.count(col)) continue;
@@ -97,11 +84,6 @@ public:
     }
   }
 
-  // Without this, the two columns keep their absolute pixel widths when the
-  // panel is resized (via the Fl_Tile divider or the window itself), so
-  // resizing just grows a scrollbar instead of the columns filling the new
-  // space. Rescale proportionally, preserving the Attribute/Value split
-  // ratio (including any the user dragged by hand).
   void resize(int X, int Y, int W, int H) override {
     Fl_Table::resize(X, Y, W, H);
     rescaleColumnWidths();
@@ -178,4 +160,4 @@ private:
   std::vector<std::pair<std::string, std::string>> entries_;
 };
 
-}  // namespace Viewer
+}

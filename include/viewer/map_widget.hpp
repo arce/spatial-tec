@@ -35,9 +35,6 @@ inline void valueToColor(double t, uchar& r, uchar& g, uchar& b) {
   }
 }
 
-// Parses a "RRGGBB" or "#RRGGBB" hex color (the convention used for RAT
-// color fields). Returns false (leaving r/g/b untouched) if the string
-// isn't a valid 6-digit hex color.
 inline bool parseHexColor(const std::string& s, uchar& r, uchar& g, uchar& b) {
   std::string hex = s;
   if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
@@ -65,17 +62,10 @@ public:
     color(FL_WHITE);
   }
 
-  // Called when the user clicks (without dragging) on a feature. Receives
-  // the layer index and feature index within that layer's vector_data.
   void setFeatureClickCallback(std::function<void(int, int)> cb) {
     feature_click_cb_ = std::move(cb);
   }
 
-  // Highlights a single feature (e.g. because its row was picked in the
-  // attribute table, or it was clicked on the map). Identified by the raw
-  // Layer pointer rather than an index so the highlight survives layer
-  // reordering/insertion; it's automatically dropped if that layer is no
-  // longer in layers_ (see drawHighlightedFeature()).
   void setHighlightedFeature(Layer* layer, int feature_index) {
     highlight_layer_ = layer;
     highlight_feature_ = feature_index;
@@ -130,8 +120,6 @@ public:
     if (world_w <= 1e-9) world_w = 1.0;
     if (world_h <= 1e-9) world_h = 1.0;
 
-    // Remembered so zoomToFeature() can pick a sensible minimum zoom extent
-    // (as a fraction of the whole dataset) regardless of coordinate units.
     full_extent_w_ = world_w;
     full_extent_h_ = world_h;
 
@@ -145,10 +133,6 @@ public:
     offset_y_ = g_miny - ((avail_h / scale_y_) - world_h) / 2.0;
   }
 
-  // Frames the given feature in the viewport (used when its row is picked
-  // in the attribute table). Small/point features get a minimum view size
-  // based on a fraction of the full dataset extent, so zooming doesn't go
-  // in infinitely; larger features get proportional padding around them.
   void zoomToFeature(Layer* layer, int feature_index) {
     if (!layer || layer->type != LayerType::VECTOR) return;
     const auto& features = layer->vector_data.features;
@@ -240,10 +224,6 @@ public:
       if (layer->visible && layer->type == LayerType::VECTOR) drawVectorLayer(*layer);
     }
 
-    // Vector labels are drawn in their own top-most pass (after every
-    // layer, raster or vector) so they're never hidden underneath a layer
-    // drawn later. Raster cell labels are instead drawn inline, right
-    // after that raster's own cells -- see drawRasterLayer().
     for (const auto& layer : *layers_) {
       if (layer->visible && layer->type == LayerType::VECTOR && layer->show_labels &&
           !layer->label_field.empty()) {
@@ -264,7 +244,6 @@ public:
         if (!Fl::event_inside(x(), y(), w(), h())) return 0;
         updateCursorPos();
         if (Fl::event_clicks() > 0) {
-          // Double-click: show the feature's attributes instead of panning.
           selectFeatureAt(Fl::event_x(), Fl::event_y());
           return 1;
         }
@@ -286,9 +265,6 @@ public:
         return 1;
 
       case FL_MOVE:
-        // Live cursor-coordinate readout (bottom-right corner), like the
-        // MapWindow reference: it updates as the mouse moves, unlike the
-        // idle viewport-extent readout which only changes on pan/zoom.
         if (!Fl::event_inside(x(), y(), w(), h())) {
           if (mouse_in_view_) {
             mouse_in_view_ = false;
@@ -331,22 +307,13 @@ private:
   double toWorldX(double sx) const { return offset_x_ + (sx - x() - margin_) / scale_x_; }
   double toWorldY(double sy) const { return offset_y_ + (y() + h() - margin_ - sy) / scale_y_; }
 
-  // Finds the topmost (last-drawn) visible feature under the click and
-  // reports it via feature_click_cb_. Uses each feature's bounding box as a
-  // cheap first filter, then an exact geometry test (point-in-polygon /
-  // distance-to-line/point) so selection is accurate even for irregular
-  // shapes. For a raster layer with a RAT, "feature" means the RAT row for
-  // whatever class the clicked cell belongs to (see rasterRatRowAt()) --
-  // feature_click_cb_ is reused with that as the second index.
   void selectFeatureAt(int screen_x, int screen_y) {
     if (!layers_ || !has_data_ || !feature_click_cb_) return;
 
     double wx = toWorldX(screen_x);
     double wy = toWorldY(screen_y);
-    double tol = 5.0 / std::max(scale_x_, 1e-9);  // ~5 screen px, in world units
+    double tol = 5.0 / std::max(scale_x_, 1e-9);
 
-    // Layers are drawn from index 0 to size()-1, so the last one drawn (and
-    // therefore the one visually on top) is at the end of the vector.
     for (int li = (int)layers_->size() - 1; li >= 0; --li) {
       const auto& layer = (*layers_)[li];
       if (!layer->visible) continue;
@@ -383,9 +350,6 @@ private:
     }
   }
 
-  // Maps a world-space click to the raster cell under it, then looks up
-  // that cell's value in the RAT. Returns -1 if the click misses the grid,
-  // lands on a nodata cell, or the value has no matching RAT row.
   static int rasterRatRowAt(const Spatial::RasterDataset& ds, double wx, double wy) {
     if (ds.ncols <= 0 || ds.nrows <= 0 || ds.cellsize <= 0) return -1;
 
@@ -400,9 +364,6 @@ private:
     return ds.findRatRow(val);
   }
 
-  // Point/line/polygon hit test for one flat [x0,y0,x1,y1,...] part, picked
-  // by `base_type` (the MULTI* feature's own type, since each part of a
-  // MultiPoint/MultiLineString/MultiPolygon is itself a point/line/polygon).
   static bool hitTestPart(Spatial::VectorFeature::GeometryType base_type,
                           const std::vector<double>& coords, double wx, double wy, double tol) {
     using Geom = Spatial::VectorFeature::GeometryType;
@@ -414,15 +375,10 @@ private:
     if (base_type == Geom::LINESTRING || base_type == Geom::MULTILINESTRING) {
       return pointToLineDistance(wx, wy, coords) <= tol;
     }
-    // POLYGON/MULTIPOLYGON part: inside the ring, or close enough to its boundary.
     if (pointInPolygon(wx, wy, coords)) return true;
     return pointToLineDistance(wx, wy, coords) <= tol;
   }
 
-  // feature.part_starts (see spatial_types.hpp) carries the real part
-  // boundaries for a MULTIPOINT/MULTILINESTRING/MULTIPOLYGON made of more
-  // than one part -- empty for everything else, in which case this tests
-  // feature.coordinates as a single shape, exactly as before.
   static bool hitTestFeature(const Spatial::VectorFeature& feature, double wx, double wy, double tol) {
     if (feature.coordinates.size() < 2) return false;
 
@@ -458,10 +414,6 @@ private:
     return (maxx - minx) + (maxy - miny);
   }
 
-  // Shows live world coordinates under the cursor while the mouse is over
-  // the map (matching the MapWindow reference), or falls back to the
-  // viewport's visible bounding box when the mouse isn't over the widget.
-  // Anchored to the bottom-right corner.
   void drawViewportCoordinates() {
     char buf[160];
     if (mouse_in_view_) {
@@ -496,11 +448,6 @@ private:
     fl_pop_clip();
   }
 
-  // Outline-only draw of one flat [x0,y0,x1,y1,...] part, picked by
-  // `base_type` same as hitTestPart(). Shared by drawHighlightedFeature()
-  // below and, per-part, by every MULTI* feature so each island/segment
-  // gets its own outline instead of one shape with the parts wired
-  // together.
   void drawPartOutline(Spatial::VectorFeature::GeometryType base_type,
                        const std::vector<double>& coords) {
     using Geom = Spatial::VectorFeature::GeometryType;
@@ -524,10 +471,6 @@ private:
     }
   }
 
-  // Draws an outline around the currently highlighted feature (selected
-  // either by clicking it on the map or by clicking its row in the
-  // attribute table). Silently does nothing if the layer it belongs to is
-  // no longer in layers_ (e.g. it was deleted).
   void drawHighlightedFeature() {
     if (!highlight_layer_ || !layers_) return;
 
@@ -546,7 +489,7 @@ private:
     const auto& feature = features[highlight_feature_];
     if (feature.coordinates.size() < 2) return;
 
-    Fl_Color highlight_color = fl_rgb_color(255, 140, 0);  // orange
+    Fl_Color highlight_color = fl_rgb_color(255, 140, 0);
 
     fl_color(highlight_color);
     fl_line_style(FL_SOLID, 3);
@@ -562,12 +505,6 @@ private:
     fl_line_style(0);
   }
 
-  // Resolves the fill color to use for a vector feature: if the layer has
-  // style_rules (loaded from a .sty sidecar), scans the feature's
-  // attributes for one that falls in a rule's [min,max] range and returns
-  // that rule's color; otherwise falls back to the layer's plain
-  // fill_color. Mirrors spatial_svg's applyRules so a .sty renders the
-  // same way in both tools -- see ADR-0004.
   Fl_Color resolveFillColor(const Layer& layer, const Spatial::VectorFeature& feature) {
     if (!layer.style_rules.empty()) {
       for (const auto& rule : layer.style_rules) {
@@ -598,10 +535,6 @@ private:
       if (feature.part_starts.empty()) {
         drawFeaturePart(layer, feature.type, feature.coordinates, fill_color);
       } else {
-        // Each part gets its own fl_begin_polygon()/fl_end_polygon() call,
-        // so e.g. a MultiPolygon made of several separate islands fills
-        // and outlines each island on its own -- no stray edge connecting
-        // one island to the next, no self-intersecting combined shape.
         for (const auto& range : featurePartRanges(feature)) {
           drawFeaturePart(layer, feature.type, Viewer::extractRange(feature, range), fill_color);
         }
@@ -611,11 +544,6 @@ private:
     }
   }
 
-  // Draws one flat [x0,y0,x1,y1,...] part with the same fill+outline
-  // styling drawVectorLayer() always used for a plain POINT/LINESTRING/
-  // POLYGON feature. `base_type` is the owning feature's type, so a
-  // MULTIPOINT/MULTILINESTRING/MULTIPOLYGON part is drawn exactly like its
-  // singular counterpart -- see the Geom::MULTI* cases below.
   void drawFeaturePart(const Layer& layer, Spatial::VectorFeature::GeometryType base_type,
                        const std::vector<double>& coords, Fl_Color fill_color) {
     using Geom = Spatial::VectorFeature::GeometryType;
@@ -624,7 +552,7 @@ private:
     if (base_type == Geom::POINT || base_type == Geom::MULTIPOINT) {
       double cx = toScreenX(coords[0]);
       double cy = toScreenY(coords[1]);
-      const double pr = 4.0;  // marker radius, in screen pixels
+      const double pr = 4.0;
 
       if (layer.fill) {
         fl_color(fill_color);
@@ -670,10 +598,6 @@ private:
     double range = ds.max_val - ds.min_val;
     if (range < 1e-12) range = 1.0;
 
-    // When a RAT color field is set, look up each cell's class color
-    // instead of the default min/max gradient; the same value->RAT row
-    // lookup also drives the optional cell label text below. Build the
-    // value->row index cache once per draw (not per cell) for speed.
     bool use_rat_color = ds.has_rat && !layer.rat_color_field.empty();
     bool need_rat_index = use_rat_color || (layer.show_labels && ds.has_rat &&
                                              !layer.rat_label_field.empty());
@@ -706,12 +630,6 @@ private:
 
         uchar r_col, g_col, b_col;
         bool colored = false;
-        // A .sty sidecar (layer.style_rules) takes priority over both the
-        // RAT color field and the default gradient below -- its classes
-        // were precomputed by spatial_colormap specifically for this
-        // layer, so they're the most specific style available. No
-        // interpolation: each cell's value is matched against a class
-        // range and that class's color used as-is (see ADR-0004).
         if (!layer.style_rules.empty()) {
           for (const auto& rule : layer.style_rules) {
             if (val >= rule.min_val && val <= rule.max_val) {
@@ -735,8 +653,6 @@ private:
         fl_color(r_col, g_col, b_col);
         fl_rectf((int)sx1, (int)sy1, (int)sw + 1, (int)sh + 1);
 
-        // Skip the label if the cell is too small on screen to hold
-        // legible text (common when zoomed out on a large grid).
         if (layer.show_labels && sw >= 16 && sh >= 12) {
           std::string text = rasterCellLabel(ds, layer, val, rat_index);
           drawLabelText((int)sx1, (int)sy1, (int)sw, (int)sh, text, FL_ALIGN_CENTER);
@@ -745,9 +661,6 @@ private:
     }
   }
 
-  // Text to show for a raster cell's label: the configured RAT label field
-  // if there's a matching class, otherwise the raw cell value (formatted
-  // without a trailing ".00" for whole numbers).
   static std::string rasterCellLabel(const Spatial::RasterDataset& ds, const Layer& layer,
                                       double val, const std::unordered_map<double, int>& rat_index) {
     if (ds.has_rat && !layer.rat_label_field.empty()) {
@@ -768,19 +681,13 @@ private:
     return buf;
   }
 
-  // Picks the biggest part of a MultiPolygon/MultiLineString/MultiPoint
-  // feature to anchor its single label on -- e.g. the main island of a
-  // region made of several, rather than an arbitrary or averaged point
-  // that might land outside every part. "Biggest" is area for polygons,
-  // length for lines, and simply the first point for MultiPoint (there's
-  // no natural "biggest" for a bare point).
   static std::vector<double> largestPart(const Spatial::VectorFeature& feature) {
     using Geom = Spatial::VectorFeature::GeometryType;
     auto ranges = featurePartRanges(feature);
     size_t best = 0;
     double best_measure = -1.0;
     for (size_t i = 0; i < ranges.size(); ++i) {
-      double measure = 0.0;  // MULTIPOINT: first part wins (no natural "biggest" point).
+      double measure = 0.0;
       if (feature.type == Geom::MULTIPOLYGON) {
         measure = polygonArea(Viewer::extractRange(feature, ranges[i]));
       } else if (feature.type == Geom::MULTILINESTRING) {
@@ -794,12 +701,6 @@ private:
     return Viewer::extractRange(feature, ranges[best]);
   }
 
-  // Draws a vector layer's labels: polygons at their centroid, points just
-  // to the right of the marker, lines at their length-wise midpoint. For a
-  // MULTI* feature with more than one part, the label anchors on the
-  // largest part (see largestPart()) instead of averaging across every
-  // part, which could land the label outside all of them (e.g. between two
-  // separate islands).
   void drawVectorLabels(const Layer& layer) {
     using Geom = Spatial::VectorFeature::GeometryType;
 
@@ -843,10 +744,6 @@ private:
     }
   }
 
-  // Shared label-drawing primitive: a thin white halo behind black text so
-  // labels stay legible over any fill color or raster cell underneath.
-  // Resets the font itself (rather than assuming the caller did) since
-  // fl_font() is global FLTK drawing state shared with every other widget.
   static void drawLabelText(int x, int y, int w, int h, const std::string& text, Fl_Align align) {
     if (text.empty()) return;
     fl_font(FL_HELVETICA, 11);
@@ -880,4 +777,4 @@ private:
   double mouse_screen_x_ = 0, mouse_screen_y_ = 0;
 };
 
-}  // namespace Viewer
+}

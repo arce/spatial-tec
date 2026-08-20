@@ -47,9 +47,6 @@ public:
 
   void loadFileFromArgs(const std::string& filename) { loadFile(filename); }
 
-  // The menu bar sits outside the resizable Fl_Tile (it must never be
-  // vertically resized), so keep it pinned to the full window width
-  // whenever the window itself is resized.
   void resize(int X, int Y, int W, int H) override {
     Fl_Double_Window::resize(X, Y, W, H);
     if (menu_bar_) menu_bar_->size(W, layout_menu_h_);
@@ -76,7 +73,6 @@ private:
     menu_bar_->add("Table/Hide column", 0, cbTableHideColumn, this);
     menu_bar_->add("Table/Show all columns", 0, cbTableShowAllColumns, this);
 
-    // Attributes starts unchecked/hidden; the others start visible.
     mi_panel_layers_ = menu_bar_->add("Panels/Layers", 0, cbTogglePanelLayers, this,
                                        FL_MENU_TOGGLE | FL_MENU_VALUE);
     mi_panel_attributes_ = menu_bar_->add("Panels/Attributes", 0, cbTogglePanelAttributes, this,
@@ -89,11 +85,6 @@ private:
     menu_bar_->add("Help/About...", 0, cbMenuAbout, this);
   }
 
-  // MapWindow-style layout: a left column (layer list over an attributes
-  // panel) and a center column (map over the attribute table), all
-  // resizable by dragging the dividers. Built as nested Fl_Tile groups: an
-  // outer tile splits left/center, and each column is itself an Fl_Tile
-  // splitting top/bottom.
   void setupLayout() {
     layout_menu_h_ = 25;
 
@@ -103,8 +94,6 @@ private:
     int right_x = left_w;
     int right_w = w() - left_w;
 
-    // left_split_h_ is the layer-panel height used whenever both left-column
-    // panels are visible (restored when the attributes panel is re-shown).
     left_split_h_ = (int)(body_h * 0.55);
     int layer_h = left_split_h_;
     int attrs_h = body_h - layer_h;
@@ -129,16 +118,6 @@ private:
 
     resizable(outer_tile);
 
-    // Fl_Tile remembers each child's baseline geometry (via init_sizes(), on
-    // first use) to figure out how far a divider can be dragged and how
-    // children rescale when the window itself is resized. That baseline
-    // must be snapshotted while every child still has a sane, nonzero size
-    // -- if it were captured later while the attributes panel sits collapsed
-    // at height 0 (its starting state), Fl_Tile would treat the
-    // layer/attributes divider as coincident with the column's own bottom
-    // edge and refuse to let the user drag it open. So: force the snapshot
-    // now, with the real 55/45 split in place, and only afterwards collapse
-    // the attributes panel to start hidden.
     left_tile_->init_sizes();
     right_tile_->init_sizes();
 
@@ -209,13 +188,6 @@ private:
     table_panel_->setContent(table_widget_);
   }
 
-  // Resizes the two panels in the left column (layer list / attributes) to
-  // match the requested visibility. A hidden panel is collapsed to 0 height
-  // and its sibling expands to fill the column; showing it again restores
-  // left_split_h_ (updated by the caller just before switching states).
-  // DockPanel::resize() always explicitly relayouts its own content from
-  // its current bounds (see dock_panel.hpp), so this doesn't need any of
-  // the Fl_Group init_sizes()/resizable() bookkeeping plain groups would.
   void updateLeftColumn(bool layers_visible, bool attributes_visible) {
     int X = left_tile_->x(), Y = left_tile_->y(), W = left_tile_->w(), H = left_tile_->h();
 
@@ -228,8 +200,6 @@ private:
       layer_h = 0;
       attrs_h = H;
     } else {
-      // Either only the layer panel is visible, or (defensively) neither
-      // request is honored — always leave the layer panel showing.
       layer_h = H;
       attrs_h = 0;
     }
@@ -239,7 +209,6 @@ private:
     left_tile_->redraw();
   }
 
-  // Same idea as updateLeftColumn(), for the map/table column.
   void updateRightColumn(bool map_visible, bool table_visible) {
     int X = right_tile_->x(), Y = right_tile_->y(), W = right_tile_->w(), H = right_tile_->h();
 
@@ -266,9 +235,6 @@ private:
     menu_bar_->mode(index, FL_MENU_TOGGLE | (checked ? FL_MENU_VALUE : 0));
   }
 
-  // toggle_layers: true flips the layer panel's visibility, false flips the
-  // attributes panel's. Refuses to hide the last visible panel in the
-  // column (a Fl_Tile column can't have zero visible content).
   void toggleLeftPanel(bool toggle_layers) {
     bool layers_visible = layer_panel_->h() > 0;
     bool attrs_visible = attributes_group_->h() > 0;
@@ -289,8 +255,6 @@ private:
     syncMenuCheck(mi_panel_attributes_, new_attrs_visible);
   }
 
-  // toggle_map: true flips the map panel's visibility, false flips the
-  // table panel's. Same one-must-stay-visible guard as toggleLeftPanel().
   void toggleRightPanel(bool toggle_map) {
     bool map_visible = map_panel_->h() > 0;
     bool table_visible = table_panel_->h() > 0;
@@ -324,12 +288,6 @@ private:
     table_widget_->refresh();
   }
 
-  // Called when the user double-clicks a feature on the map. Makes that
-  // feature's layer the active one, highlights and scrolls to its row in
-  // the attribute table, and shows its attributes in the attributes panel.
-  // For a raster layer with a RAT, feature_idx is the RAT row of the
-  // clicked cell's class (see MapWidget::rasterRatRowAt()) -- there's no
-  // single shape to outline/zoom to for a class, so that part is skipped.
   void onFeatureClicked(int layer_idx, int feature_idx) {
     if (layer_idx < 0 || layer_idx >= (int)layers_.size()) return;
     auto& layer = layers_[layer_idx];
@@ -381,16 +339,6 @@ private:
     return false;
   }
 
-  // Looks for <filename>.sty next to a layer being loaded and, if found,
-  // applies it on top of whatever default color the caller already set:
-  // plain color/fill/opacity for the base style, plus classification
-  // rules for MapWidget to use instead of a flat color (see ADR-0004,
-  // include/core/spatial_style.hpp, and MapWidget::resolveFillColor /
-  // MapWidget::drawRasterLayer for how those rules get applied at draw
-  // time), plus show_labels/label_field (ADR-0005) so a layer opens with
-  // the same on-map labels spatial_svg would draw from the same .sty --
-  // previously these two fields only ever got set by hand from the UI. A
-  // layer with no matching .sty is left untouched.
   void applySidecarStyle(Layer& layer, const std::string& filename) {
     Spatial::LayerStyle sty;
     if (!Spatial::loadSidecarStyle(filename, sty)) return;
@@ -418,11 +366,6 @@ private:
       showErrorMessage("Could not read vector file: " + filename);
       return false;
     }
-    // Multi-part geometries (a region made of several islands, a route
-    // split into disconnected segments, ...) already have their real part
-    // boundaries in each feature's part_starts, recorded by the reader
-    // above -- nothing extra to do here. See map_widget.hpp for where
-    // that's used to draw/hit-test/label each part separately.
 
     static const Fl_Color colors[] = {FL_BLUE, FL_RED, FL_GREEN, FL_YELLOW, FL_MAGENTA, FL_CYAN};
     layer->color = colors[layers_.size() % 6];
@@ -575,9 +518,6 @@ private:
     win->editLayerAt(win->layer_list_->selected());
   }
 
-  // Dispatches to the vector- or raster-specific edit dialog, since the two
-  // have very little in common now that raster layers can carry a RAT
-  // (color/label field pickers) instead of border/fill colors.
   void editLayerAt(int idx) {
     if (idx < 0 || idx >= (int)layers_.size()) return;
     if (layers_[idx]->type == LayerType::RASTER) {
@@ -628,9 +568,6 @@ private:
       color_choice.value(color_sel);
       label_choice.value(label_sel);
     } else {
-      // No RAT loaded for this raster: nothing to pick a field from, so
-      // just explain that instead of showing empty dropdowns. Show labels
-      // still works without a RAT (it falls back to the raw cell value).
       color_choice.add("(no RAT loaded)");
       color_choice.value(0);
       color_choice.deactivate();
@@ -863,8 +800,8 @@ private:
   DockPanel* map_panel_ = nullptr;
   DockPanel* table_panel_ = nullptr;
 
-  int left_split_h_ = 0;   // layer-panel height to use when both left panels are visible
-  int right_split_h_ = 0;  // map-panel height to use when both right panels are visible
+  int left_split_h_ = 0;
+  int right_split_h_ = 0;
 
   int mi_panel_layers_ = -1;
   int mi_panel_attributes_ = -1;
@@ -881,4 +818,4 @@ private:
   std::string current_directory_;
 };
 
-}  // namespace Viewer
+}

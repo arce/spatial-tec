@@ -15,15 +15,6 @@
 
 namespace Viewer {
 
-// Custom-drawn layer list.
-//
-// Fl_Browser cannot host per-row widgets (checkboxes) nor easily support
-// drag-to-reorder, so this list draws its own rows (in the same spirit as
-// TableWidget/MapWidget) and handles mouse interaction directly:
-//   - clicking the checkbox toggles layer visibility
-//   - clicking a row selects that layer
-//   - double-clicking a row opens the layer editor
-//   - dragging a row up/down reorders the layer stack
 class LayerListWidget : public Fl_Widget {
 public:
   LayerListWidget(int X, int Y, int W, int H, const char* L = 0)
@@ -193,7 +184,6 @@ private:
     fl_color(fl_rgb_color(224, 224, 224));
     fl_line(X, ry + H, X + W, ry + H);
 
-    // Visibility checkbox.
     int cb = checkbox_size_;
     int cb_x = X + 6;
     int cb_y = ry + (H - cb) / 2;
@@ -206,8 +196,6 @@ private:
       fl_line_style(0);
     }
 
-    // Color swatch: fill color inside, border color as outline. This
-    // communicates the layer's styling visually instead of as text.
     int sw = 18;
     int sw_x = cb_x + cb + 10;
     int sw_y = ry + (H - sw) / 2;
@@ -222,7 +210,6 @@ private:
     fl_rect(sw_x, sw_y, sw, sw);
     fl_line_style(0);
 
-    // Layer name + type badge.
     std::string label = layer->name;
     label += (layer->type == LayerType::VECTOR) ? "  [Vector]" : "  [Raster]";
 
@@ -255,4 +242,4 @@ private:
   std::function<void(int)> edit_cb_;
 };
 
-}  // namespace Viewer
+}

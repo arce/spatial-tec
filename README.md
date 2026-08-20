@@ -5,7 +5,7 @@ A collection of C++17 command-line utilities for spatial (vector and raster) dat
 ## Requirements
 
 - `g++` (Linux/macOS) with C++17 support, or `mingw-w64` for cross-compiling to Windows
-- The 38 stable command-line tools, plus 9 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+- The 41 stable command-line tools, plus 8 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
 - `spatial_viewer` additionally needs FLTK, vendored per platform under `fltk/` (`fltk/linux`, `fltk/mac-arm`, `fltk/mac-intel`, `fltk/windows` -- each with its own `include/` and `lib/`), so a fresh checkout can build it without installing FLTK's dev packages first. See the comments at the top of the `Makefile` for what each platform additionally needs from the system itself (X11 client + fontconfig dev headers on Linux; nothing extra on macOS; `mingw-w64` on whichever machine cross-compiles to Windows).
 
 ## Build
@@ -63,6 +63,8 @@ Running any command with no arguments prints its usage help.
 | `spatial_geo2csv` | GeoJSON → spatial CSV |
 | `spatial_osm2csv` | OSM XML → spatial CSV |
 | `spatial_csv2osm` | Spatial CSV → OpenStreetMap XML |
+| `spatial_shp2csv` | Shapefile (.shp/.shx/.dbf) → spatial CSV |
+| `spatial_csv2shp` | Spatial CSV → Shapefile (.shp/.shx/.dbf) |
 | `spatial_difference` | Difference between vector datasets |
 | `spatial_distance` | Distances between features |
 | `spatial_filter_raster` | Filter raster cells by value |
@@ -90,6 +92,7 @@ Running any command with no arguments prints its usage help.
 | `spatial_reclass` | Reclassify raster values via a lookup table |
 | `spatial_rat` | Export/import a raster attribute table: `-mode export\|import` |
 | `spatial_validate` | Validate/repair vector geometry |
+| `spatial_reproject` | Convert vector coordinates between CRS (WGS84, CRTM05, UTM 16N/17N, Web Mercator) |
 
 The detailed reference for each command (syntax, options, and examples, in the style of Unix `man` pages) lives in the **[command manual](doc/README.md)**, grouped by category:
 

@@ -8,6 +8,8 @@
   - [spatial_geo2csv](commands/conversion.md#spatial_geo2csv)
   - [spatial_osm2csv](commands/conversion.md#spatial_osm2csv)
   - [spatial_csv2osm](commands/conversion.md#spatial_csv2osm)
+  - [spatial_shp2csv](commands/conversion.md#spatial_shp2csv)
+  - [spatial_csv2shp](commands/conversion.md#spatial_csv2shp)
 
 - Vector Processing
   - [spatial_buffer](commands/vector.md#spatial_buffer)
@@ -52,3 +54,6 @@
   - [spatial_colormap](commands/cartography.md#spatial_colormap)
   - [spatial_svg](commands/cartography.md#spatial_svg)
   - [spatial_viewer](commands/cartography.md#spatial_viewer)
+
+- Coordinate Reference Systems
+  - [spatial_reproject](commands/projection.md#spatial_reproject)

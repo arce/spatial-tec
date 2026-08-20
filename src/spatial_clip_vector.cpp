@@ -43,51 +43,51 @@ bool polygonContainsFeature(const std::vector<double>& polygon,
   return false;
 }
 
-std::vector<double> readPolygonFromCSV(const std::string& filename) {
-  std::ifstream file(filename);
-  if (!file.is_open())
-    return {};
+bool anyPolygonContainsFeature(const std::vector<std::vector<double>>& polygons,
+                               const Spatial::VectorFeature& feature) {
+  for (const auto& polygon : polygons) {
+    if (polygonContainsFeature(polygon, feature)) {
+      return true;
+    }
+  }
+  return false;
+}
 
-  std::string line;
-  std::vector<double> polygon;
-  bool is_header = true;
+// Reads every POLYGON/MULTIPOLYGON feature from the given CSV as a list of
+// independent rings (one entry per ring/part, via featurePartRanges -- see
+// spatial_geom.hpp), using the shared SpatialCSVReader instead of
+// hand-parsing WKT text cell by cell. A target file with more than one
+// polygon row (e.g. one row per canton/distrito) is tested ring by ring
+// instead of having every row's coordinates concatenated into a single,
+// geometrically meaningless ring.
+std::vector<std::vector<double>> readPolygonsFromCSV(const std::string& filename) {
+  std::vector<std::vector<double>> polygons;
 
-  while (std::getline(file, line)) {
-    line = trim(line);
-    if (line.empty() || line[0] == '#')
-      continue;
+  Spatial::SpatialCSVReader reader;
+  Spatial::VectorDataset dataset;
+  if (!reader.read(filename, dataset)) {
+    return polygons;
+  }
 
-    if (is_header) {
-      is_header = false;
+  for (const auto& feature : dataset.features) {
+    if (feature.type != Spatial::VectorFeature::GeometryType::POLYGON &&
+        feature.type != Spatial::VectorFeature::GeometryType::MULTIPOLYGON) {
       continue;
     }
-
-    auto values = split(line, ',');
-    for (const auto& val : values) {
-      std::string v = trim(val);
-      if (v.find("POLYGON") == 0) {
-        size_t start = v.find('(');
-        size_t end = v.rfind(')');
-        if (start != std::string::npos && end != std::string::npos) {
-          std::string inner = v.substr(start + 1, end - start - 1);
-          inner.erase(std::remove(inner.begin(), inner.end(), '('), inner.end());
-          inner.erase(std::remove(inner.begin(), inner.end(), ')'), inner.end());
-
-          auto points = split(inner, ',');
-          for (const auto& p : points) {
-            auto coords = split(trim(p), ' ');
-            if (coords.size() >= 2) {
-              polygon.push_back(std::stod(coords[0]));
-              polygon.push_back(std::stod(coords[1]));
-            }
-          }
-        }
-        break;
+    for (const auto& range : featurePartRanges(feature)) {
+      std::vector<double> ring;
+      ring.reserve((range.second - range.first) * 2);
+      for (size_t p = range.first; p < range.second; ++p) {
+        ring.push_back(feature.coordinates[p * 2]);
+        ring.push_back(feature.coordinates[p * 2 + 1]);
+      }
+      if (!ring.empty()) {
+        polygons.push_back(std::move(ring));
       }
     }
   }
 
-  return polygon;
+  return polygons;
 }
 
 void printUsage() {
@@ -95,7 +95,10 @@ void printUsage() {
   std::cerr << "Usage: spatial_clip_vector <input> <output> [options]\n\n";
   std::cerr << "Options:\n";
   std::cerr << "  -bbox <minx> <miny> <maxx> <maxy>   Clip by bounding box\n";
-  std::cerr << "  -polygon <file>                     Clip by polygon from CSV\n";
+  std::cerr << "  -polygon <file>                     Clip by polygon(s) from CSV -- every\n";
+  std::cerr << "                                       POLYGON/MULTIPOLYGON row is tested\n";
+  std::cerr << "                                       independently, a feature matching any\n";
+  std::cerr << "                                       one of them is kept\n";
   std::cerr << "  -clip_to <file>                     Clip to extent of another file\n";
   std::cerr << "  -invert                            Invert clipping\n\n";
   std::cerr << "Examples:\n";
@@ -156,15 +159,18 @@ int main(int argc, char* argv[]) {
 
   std::cout << "Input features: " << dataset.features.size() << "\n";
 
-  std::vector<double> polygon;
+  std::vector<std::vector<double>> polygons;
 
   if (use_polygon) {
-    polygon = readPolygonFromCSV(polygon_file);
-    if (polygon.empty()) {
-      std::cerr << "Error: Could not read polygon from " << polygon_file << "\n";
+    polygons = readPolygonsFromCSV(polygon_file);
+    if (polygons.empty()) {
+      std::cerr << "Error: Could not read any POLYGON/MULTIPOLYGON feature from " << polygon_file
+                << "\n";
       return 1;
     }
-    std::cout << "Polygon vertices: " << polygon.size() / 2 << "\n";
+    size_t total_vertices = 0;
+    for (const auto& p : polygons) total_vertices += p.size() / 2;
+    std::cout << "Polygons: " << polygons.size() << " (" << total_vertices << " vertices total)\n";
   } else if (use_clip_to) {
     std::cerr << "Error: -clip_to not yet implemented\n";
     return 1;
@@ -179,7 +185,7 @@ int main(int argc, char* argv[]) {
     bool inside;
 
     if (use_polygon) {
-      inside = polygonContainsFeature(polygon, feature);
+      inside = anyPolygonContainsFeature(polygons, feature);
     } else if (use_bbox) {
       inside = bbox.contains(feature.coordinates);
     } else {

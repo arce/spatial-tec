@@ -1,6 +1,6 @@
 # Format Conversion
 
-Tools for converting between the spatial formats used throughout this project: spatial CSV (WKT geometry column), GeoJSON, and OpenStreetMap XML.
+Tools for converting between the spatial formats used throughout this project: spatial CSV (WKT geometry column), GeoJSON, OpenStreetMap XML, and Shapefile.
 
 > Syntax conventions: `<argument>` is required, `[optional]` is optional, `...` means repetition. Options use a single dash (`-option`).
 
@@ -184,3 +184,89 @@ spatial_csv2osm places.csv places.osc -osmchange -changeset 123456
 **SEE ALSO**
 
 [spatial_osm2csv](#spatial_osm2csv), [spatial_csv2geo](#spatial_csv2geo)
+
+---
+
+## spatial_shp2csv
+
+**NAME**
+
+`spatial_shp2csv` — convert a Shapefile to spatial CSV
+
+**SYNOPSIS**
+
+```
+spatial_shp2csv <input.shp> <output.csv> [options]
+```
+
+**DESCRIPTION**
+
+Converts an ESRI Shapefile (the `.shp`/`.shx`/`.dbf` trio) into a spatial CSV with geometry encoded as WKT. `<input.shp>` may also be given as the `.dbf` path or with no extension at all — the base name is used to look up the pair. A companion `.dbf` next to the `.shp` supplies the attribute columns; if it's missing, the output falls back to just a synthetic `id` column with a warning.
+
+`Point`, `PolyLine`, `Polygon`, and `MultiPoint` shapes are supported, including their `Z`/`M` variants (Z/M values are read and discarded — every other tool in this project is 2D-only, see [spatial_types.hpp](../../include/core/spatial_types.hpp)). A `PolyLine`/`Polygon` with more than one part becomes a `MULTILINESTRING`/`MULTIPOLYGON`, one part per array entry — same convention `spatial_csv2geo`/`spatial_geo2csv` already use for multi-part WKT. A Shapefile `Polygon` ring that's actually a hole is read as an extra part of the `MULTIPOLYGON` rather than an inner ring, the same simplification the rest of this project already applies to polygon geometry (it has no hole/inner-ring concept anywhere). `MultiPatch` shapes (and any other unrecognized shape code) aren't supported — those records are read with empty geometry and counted in a warning.
+
+If a `.dbf` field happens to be named `id` or `geometry` — colliding with the columns this tool needs for its own bookkeeping — the field is renamed (e.g. to `_id`) and a warning is printed, so its data is never silently overwritten.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-no_geometry` | Exclude the geometry column |
+| `-include_type` | Include a geometry type column |
+| `-props <list>` | Only include the given attribute fields, comma-separated |
+| `-verbose` | Show detailed information |
+
+**EXAMPLES**
+
+```
+spatial_shp2csv parcels.shp parcels.csv
+spatial_shp2csv parcels.shp parcels.csv -props name,zoning
+spatial_shp2csv parcels.shp parcels.csv -include_type
+```
+
+**SEE ALSO**
+
+[spatial_csv2shp](#spatial_csv2shp)
+
+---
+
+## spatial_csv2shp
+
+**NAME**
+
+`spatial_csv2shp` — convert a spatial CSV to Shapefile
+
+**SYNOPSIS**
+
+```
+spatial_csv2shp <input.csv> <output.shp> [options]
+```
+
+**DESCRIPTION**
+
+Converts a spatial CSV (WKT geometry column) into an ESRI Shapefile, writing the `.shp`/`.shx`/`.dbf` trio next to `<output.shp>`.
+
+A Shapefile can only hold one geometry family per file — point, line, or polygon — unlike this project's own CSV/GeoJSON, which allow mixed geometry types in one dataset. The family is taken from the first feature with geometry; `POINT` and `MULTIPOINT` count as the same family (the file is written as `MultiPoint` if any `MULTIPOINT` feature is present, `Point` otherwise), and likewise `LINESTRING`/`MULTILINESTRING` and `POLYGON`/`MULTIPOLYGON` (Shapefile's `PolyLine`/`Polygon` records already support multiple parts, so a single-part feature and a multi-part one share the same shape type). Any feature outside the dominant family is skipped, counted, and reported in a warning at the end — the same skip-and-report pattern `spatial_csv2osm` uses for geometry it can't represent in OSM XML.
+
+Every non-geometry column becomes a `.dbf` attribute field. Field names are limited to 10 characters (the dBase III limit the Shapefile format inherits) — longer column names are truncated, and if two columns truncate to the same name, a numeric suffix is appended to keep them unique. A field's type (numeric or text) and width are inferred by scanning every feature's value for that column.
+
+Polygon rings are closed explicitly and reordered to clockwise winding if needed, per the Shapefile spec's requirement for outer rings — regardless of the order they were written in the source CSV/WKT.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-geometry_column <col>` | Name of the geometry column (default: auto-detected, same as `spatial_csv2geo`) |
+| `-exclude <list>` | Exclude these attribute columns from the `.dbf`, comma-separated |
+| `-verbose` | Show detailed information |
+
+**EXAMPLES**
+
+```
+spatial_csv2shp cities.csv cities.shp
+spatial_csv2shp parcels.csv parcels.shp -exclude internal_id
+```
+
+**SEE ALSO**
+
+[spatial_shp2csv](#spatial_shp2csv)

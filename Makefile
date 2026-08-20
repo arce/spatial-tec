@@ -1,5 +1,5 @@
-# Makefile for Spatial TEC -- builds the 34 console tools (spatial_info,
-# spatial_buffer, ..., spatial_csv2osm) and spatial_viewer (the one FLTK
+# Makefile for Spatial TEC -- builds the 40 console tools (spatial_info,
+# spatial_buffer, ..., spatial_csv2shp) and spatial_viewer (the one FLTK
 # GUI tool) natively for whichever OS `make` is run on (Linux or macOS), or
 # cross-compiled to Windows from Linux/macOS using mingw-w64.
 #
@@ -97,7 +97,7 @@ endif
 # depends on include/viewer/*.hpp (see its own rule further down).
 CORE_HEADERS   := $(wildcard include/core/*.hpp)
 VIEWER_HEADERS := $(wildcard include/viewer/*.hpp)
-# The 38 console tools: plain C++17/STL, no FLTK, no networking, identical
+# The 40 console tools: plain C++17/STL, no FLTK, no networking, identical
 # build recipe on every platform (see the pattern rule in each PLATFORM
 # section below) -- spatial_viewer is deliberately not in this list since
 # it needs its own per-platform FLTK flags and is built by its own rule.
@@ -131,6 +131,8 @@ CONSOLE_PROGRAMS := \
     spatial_csv2geo \
     spatial_osm2csv \
     spatial_csv2osm \
+    spatial_shp2csv \
+    spatial_csv2shp \
     spatial_colormap \
     spatial_network \
     spatial_shortest_path \
@@ -139,7 +141,8 @@ CONSOLE_PROGRAMS := \
     spatial_lrs_locate \
     spatial_lrs_segment \
     spatial_interpolate \
-    spatial_zonal
+    spatial_zonal \
+    spatial_reproject
 # Comandos "cascaron" (placeholder): analizan sus argumentos igual que el
 # resto del proyecto pero todavia no implementan la funcionalidad real (ver
 # cada archivo fuente y doc/commands/ para el detalle). Se agregaron a partir
@@ -153,7 +156,15 @@ CONSOLE_PROGRAMS := \
 # cascaron que resultaron ser requeridos por los tutoriales 1-3 del manual,
 # y ya tienen funcionalidad real implementada.
 #
-# Los 9 restantes no son uno por cada operacion imaginable: donde varias
+# spatial_reproject tambien se movio: convierte coordenadas de vector entre
+# WGS84 geografico, CRTM05 (EPSG:5367, el sistema oficial de Costa Rica) y
+# UTM zonas 16N/17N (EPSG:32616/32617), ademas de Web Mercator (EPSG:3857,
+# usado por OpenStreetMap/Google Maps) -- ver include/core/spatial_projection.hpp
+# para las formulas (serie de Snyder para las proyecciones Transversa de
+# Mercator, sin dependencia de PROJ/GDAL) y doc/commands/projection.md para
+# el detalle de uso.
+#
+# Los 8 restantes no son uno por cada operacion imaginable: donde varias
 # operaciones son variantes cercanas de la misma tarea, comparten un solo
 # binario con un flag -operation/-mode, exactamente como ya hacen
 # spatial_vectorize (-contour/-polygonize/-points), spatial_distance
@@ -161,7 +172,6 @@ CONSOLE_PROGRAMS := \
 # (-method first/last/min/max/average/sum) en el resto del proyecto -- en
 # vez de un binario nuevo por variante.
 STUB_PROGRAMS := \
-    spatial_reproject \
     spatial_terrain \
     spatial_hydrology \
     spatial_cost \
@@ -381,6 +391,8 @@ help:
 	@echo "  spatial_csv2geo          - Convert spatial CSV to GeoJSON"
 	@echo "  spatial_osm2csv          - Convert OpenStreetMap XML to spatial CSV"
 	@echo "  spatial_csv2osm          - Convert spatial CSV to OpenStreetMap XML"
+	@echo "  spatial_shp2csv          - Convert a Shapefile (.shp/.shx/.dbf) to spatial CSV"
+	@echo "  spatial_csv2shp          - Convert spatial CSV to Shapefile (.shp/.shx/.dbf)"
 	@echo "  spatial_colormap         - Generate choropleth color mapping"
 	@echo "  spatial_address          - Geocode addresses by street interpolation"
 	@echo "  spatial_svg              - Generate SVG map from vector data"
@@ -391,9 +403,9 @@ help:
 	@echo "  spatial_reclass          - Reclassify raster values via a lookup table"
 	@echo "  spatial_rat              - Export/import a raster attribute table: -mode export|import"
 	@echo "  spatial_validate         - Validate/repair vector geometry"
+	@echo "  spatial_reproject        - Convert vector coordinates between CRS: -from/-to wgs84|crtm05|utm16n|utm17n|webmercator"
 	@echo ""
 	@echo "Placeholder commands (accept documented arguments, not yet implemented):"
-	@echo "  spatial_reproject          - Reproject vector/raster data between CRS"
 	@echo "  spatial_terrain            - Terrain analysis: -operation slope|aspect|hillshade|curvature"
 	@echo "  spatial_hydrology          - DEM conditioning: -operation fill|flow_direction|flow_accumulation"
 	@echo "  spatial_cost               - Cost-distance analysis: -operation cost|viewshed|corridor"

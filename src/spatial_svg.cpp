@@ -132,12 +132,6 @@ std::string pointsToSVGPath(const std::vector<double>& coords,
   return path;
 }
 
-// Escapes the handful of characters that are special inside SVG/XML text
-// content and attribute values (&, <, >, "). Applied to every piece of
-// user/data-supplied text this program embeds in the output -- the map
-// title, legend titles/labels, and per-feature label text -- since none of
-// that is guaranteed not to contain them (an attribute value of
-// `Fish & Chips` or `<unknown>` would otherwise produce invalid SVG).
 std::string escapeXML(const std::string& s) {
   std::string out;
   out.reserve(s.size());
@@ -153,20 +147,6 @@ std::string escapeXML(const std::string& s) {
   return out;
 }
 
-// Computes the anchor point for a feature's on-map label: the point itself
-// for POINT/MULTIPOINT, the area-weighted centroid for POLYGON/
-// MULTIPOLYGON, the length-wise midpoint for LINESTRING/MULTILINESTRING.
-// For a MULTI* feature with more than one real part (e.g. a region made of
-// several separate islands), anchors on the largest part -- by area for
-// polygons, by length for lines -- instead of averaging across every part,
-// which could land the label outside all of them. This mirrors
-// Viewer::MapWidget::drawVectorLabels/largestPart
-// (include/viewer/map_widget.hpp) exactly, reusing the same core geometry
-// helpers and the same extractRange() from
-// include/viewer/multipart_geometry.hpp, so spatial_svg and spatial_viewer
-// place labels identically from the same .sty (see ADR-0005). Returns
-// false (leaving lx/ly untouched) if the feature has no coordinates or its
-// geometry type has no defined anchor rule.
 bool computeLabelAnchor(const Spatial::VectorFeature& feature, double& lx, double& ly) {
   using Geom = Spatial::VectorFeature::GeometryType;
   if (feature.coordinates.size() < 2) return false;
@@ -178,7 +158,7 @@ bool computeLabelAnchor(const Spatial::VectorFeature& feature, double& lx, doubl
     size_t best = 0;
     double best_measure = -1.0;
     for (size_t i = 0; i < ranges.size(); ++i) {
-      double measure = 0.0;  // MULTIPOINT: first part wins (no natural "biggest" point).
+      double measure = 0.0;
       if (feature.type == Geom::MULTIPOLYGON) {
         measure = polygonArea(Viewer::extractRange(feature, ranges[i]));
       } else if (feature.type == Geom::MULTILINESTRING) {
@@ -208,13 +188,6 @@ bool computeLabelAnchor(const Spatial::VectorFeature& feature, double& lx, doubl
   return false;
 }
 
-// Draws one layer's legend as a self-contained <g>: a background box, a
-// bold title, and one color swatch + label row per class rule. Does
-// nothing (returns an empty string) for a layer with legend disabled or no
-// classification rules to show -- a plain-fill layer has nothing to put in
-// a legend. corner_offsets accumulates how much vertical space has already
-// been used in each named corner, so multiple layers requesting the same
-// corner stack instead of overlapping (see ADR-0005, Decision 3).
 std::string renderLegendBox(const Spatial::LayerStyle& layer_info, int canvas_width, int canvas_height,
                             std::map<std::string, double>& corner_offsets) {
   if (!layer_info.legend_enabled || layer_info.rules.empty()) return "";
@@ -227,9 +200,6 @@ std::string renderLegendBox(const Spatial::LayerStyle& layer_info, int canvas_wi
   const double swatch = 12, row_h = 18, pad = 8, title_h = 20, gap = 10, margin = 15;
   size_t n = layer_info.rules.size();
 
-  // Crude width estimate from the longest label/title (~6.2px/char at
-  // font-size 11-12) -- generous enough not to clip in the common case
-  // without needing an actual text-measurement pass.
   size_t max_chars = title.size();
   for (const auto& rule : layer_info.rules) max_chars = std::max(max_chars, rule.label.size());
   double box_w = std::max(120.0, max_chars * 6.2 + swatch + pad * 3);
@@ -269,13 +239,6 @@ std::string renderLegendBox(const Spatial::LayerStyle& layer_info, int canvas_wi
   return svg;
 }
 
-// Picks the fill color for a feature: if the layer has classification
-// rules (from a .sty file, hand-written -style file, or an auto-detected
-// sidecar), scans the feature's attributes for one whose value falls in a
-// rule's [min,max] range and returns that rule's color; otherwise falls
-// back to the layer's plain fill color. See ADR-0004/include/core/
-// spatial_style.hpp -- this must stay in sync with the equivalent lookup
-// spatial_viewer does when rendering the same .sty.
 std::string applyRules(const Spatial::VectorFeature& feature, const Spatial::LayerStyle& layer) {
   if (layer.rules.empty()) {
     return layer.fill ? layer.fill_color : "none";
@@ -387,10 +350,6 @@ std::string generateSVG(const std::vector<Spatial::LayerStyle>& layers, int widt
         svg += "/>\n";
       }
 
-      // Per-feature label (ADR-0005): only for vector layers with
-      // show_labels/label_field set (via a .sty, hand-written or sidecar --
-      // there's no command-line equivalent, since a label always comes from
-      // an attribute column that only the .sty knows about).
       if (layer_info.show_labels && !layer_info.label_field.empty()) {
         auto attr_it = feature.attributes.find(layer_info.label_field);
         if (attr_it != feature.attributes.end() && !attr_it->second.empty()) {
@@ -403,11 +362,6 @@ std::string generateSVG(const std::vector<Spatial::LayerStyle>& layers, int widt
             std::string tx = pt.substr(0, sp);
             std::string ty = pt.substr(sp + 1);
 
-            // A white stroke behind the black fill acts as a halo so the
-            // label stays legible over any fill color underneath -- the
-            // SVG equivalent of the multi-offset halo
-            // Viewer::MapWidget::drawLabelText draws by hand for FLTK,
-            // done here in one element via paint-order.
             svg += "  <text x=\"" + tx + "\" y=\"" + ty + "\" ";
             if (is_point) {
               svg += "dx=\"7\" text-anchor=\"start\" ";
@@ -517,9 +471,6 @@ int main(int argc, char* argv[]) {
       layer.fill = false;
       layer.point_size = 5;
 
-      // Auto-detect a <file>.sty sidecar (e.g. produced by
-      // spatial_colormap) and use it as this layer's style. Explicit
-      // -color/-fill/... flags below still take priority over it.
       Spatial::LayerStyle sidecar;
       if (Spatial::loadSidecarStyle(layer.file, sidecar)) {
         layer.color = sidecar.color;

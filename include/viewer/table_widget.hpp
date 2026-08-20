@@ -54,19 +54,12 @@ public:
     refresh();
   }
 
-  // Called whenever the user clicks a row (a cell or the row header),
-  // reporting the row index so the map can highlight that feature.
   void setRowSelectCallback(std::function<void(int)> cb) { row_select_cb_ = std::move(cb); }
 
   void refresh() {
     if (editing_) doneEditing();
     updateTableData();
 
-    // Raster RAT rows are classes, not sequential features, so when a label
-    // field is configured, show it in the row header instead of "1,2,3..."
-    // -- that needs a wider row header than the default numeric one. Set
-    // this before distributeColumnWidths() below, since it accounts for
-    // row_header_width() when spreading columns across the available width.
     Layer* raster_layer = currentRasterLayer();
     bool show_row_labels = raster_layer && raster_layer->raster_data.has_rat &&
                             !raster_layer->rat_label_field.empty();
@@ -82,8 +75,6 @@ public:
     redraw();
   }
 
-  // Highlights and scrolls to the given feature row (used to keep the table
-  // in sync when a feature is picked on the map).
   void selectRow(int row) {
     if (row < 0 || row >= (int)cell_data_.size()) return;
     if (editing_) doneEditing();
@@ -92,9 +83,6 @@ public:
     redraw();
   }
 
-  // Hides the currently selected column from the attribute table (it can be
-  // restored again with showAllColumns()). Works for both vector attribute
-  // columns and raster RAT columns.
   void hideColumn() {
     Layer* layer = currentLayer();
     if (!layer) return;
@@ -114,7 +102,6 @@ public:
     refresh();
   }
 
-  // Restores every column previously hidden for the current layer.
   void showAllColumns() {
     Layer* layer = currentLayer();
     if (!layer) return;
@@ -178,7 +165,6 @@ public:
     layer->vector_data.columns.push_back(col_name);
     for (auto& feat : layer->vector_data.features) feat.attributes[col_name] = "";
     refresh();
-    // Select the new column within the (possibly filtered) visible list.
     auto it = std::find(columns_.begin(), columns_.end(), col_name);
     selected_col_ = (it != columns_.end()) ? (int)std::distance(columns_.begin(), it) : -1;
     redraw();
@@ -211,11 +197,6 @@ public:
 
   void draw_cell(TableContext context, int R, int C, int X, int Y, int W, int H) override {
     if (context == CONTEXT_STARTPAGE) {
-      // Other widgets (the attributes panel, the layer list) set their own
-      // font sizes when they draw; since this table never used to set its
-      // own, it would inherit whatever they left behind. Reset it once per
-      // redraw pass so the table's text size stays consistent regardless of
-      // what was drawn most recently elsewhere in the window.
       fl_font(FL_HELVETICA, 12);
     } else if (context == CONTEXT_CELL) {
       drawDataCell(R, C, X, Y, W, H);
@@ -226,11 +207,6 @@ public:
     }
   }
 
-  // Column widths are absolute pixel values by default, so without this
-  // Fl_Table just grows a horizontal scrollbar when the surrounding panel
-  // is resized instead of the columns filling the new space. Rescale them
-  // proportionally (keeping relative widths, including any the user
-  // dragged by hand) whenever the widget itself is resized.
   void resize(int X, int Y, int W, int H) override {
     Fl_Table::resize(X, Y, W, H);
     rescaleColumnWidths();
@@ -248,8 +224,6 @@ public:
         redraw();
       }
 
-      // Only CELL/ROW_HEADER clicks actually pick a row (COL_HEADER always
-      // reports R==0, which isn't a real row selection).
       if ((context == CONTEXT_CELL || context == CONTEXT_ROW_HEADER) && row_select_cb_ &&
           R >= 0 && R < (int)cell_data_.size()) {
         row_select_cb_(R);
@@ -298,9 +272,6 @@ private:
     cell_data_.clear();
 
     if (Layer* layer = currentVectorLayer()) {
-      // Geometry is hidden by default the first time a layer's columns are
-      // seen (it's rarely useful to look at raw WKT in the grid); the user
-      // can bring it back via Table/Show all columns.
       if (!layer->geometry_hidden_initialized) {
         if (!layer->vector_data.geometry_column.empty()) {
           layer->hidden_columns.insert(layer->vector_data.geometry_column);
@@ -347,8 +318,6 @@ private:
     }
   }
 
-  // Spreads column widths so the table fills 100% of the available
-  // horizontal space instead of leaving a blank gap after the last column.
   void distributeColumnWidths() {
     int n = (int)columns_.size();
     if (n <= 0) return;
@@ -363,9 +332,6 @@ private:
     for (int c = 0; c < n; ++c) col_width(c, width);
   }
 
-  // Rescales all existing column widths so they still add up to the
-  // available width, preserving their relative proportions (rather than
-  // resetting them to an even split, which would undo manual resizing).
   void rescaleColumnWidths() {
     int n = cols();
     if (n <= 0) return;
@@ -385,8 +351,6 @@ private:
     for (int c = 0; c < n; ++c) {
       int neww;
       if (c == n - 1) {
-        // Last column absorbs any rounding remainder so the total exactly
-        // matches the available width (no leftover gap or overhang).
         neww = std::max(min_w, avail - running);
       } else {
         neww = std::max(min_w, (int)std::lround(col_width(c) * scale));
@@ -479,10 +443,6 @@ private:
     fl_pop_clip();
   }
 
-  // Row headers are normally just the 1-based row number. For a raster RAT
-  // table with a label field configured, show that class's label instead
-  // (e.g. "Forest" rather than "2") so the row header is actually useful
-  // for identifying which class each row is.
   std::string rowHeaderLabel(int R) {
     if (Layer* layer = currentRasterLayer()) {
       if (layer->raster_data.has_rat && !layer->rat_label_field.empty() && R >= 0 &&
@@ -516,4 +476,4 @@ private:
   std::function<void(int)> row_select_cb_;
 };
 
-}  // namespace Viewer
+}

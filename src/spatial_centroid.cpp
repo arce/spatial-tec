@@ -119,7 +119,64 @@ Point2D pointCentroid(const std::vector<double>& coords) {
   return Point2D(0, 0);
 }
 
-Point2D calculateCentroid(const Spatial::VectorFeature& feature, const std::string& method) {
+Point2D multiPointCentroid(const std::vector<double>& coords) {
+  size_t count = coords.size() / 2;
+  if (count == 0) {
+    return Point2D(0, 0);
+  }
+  double sum_x = 0, sum_y = 0;
+  for (size_t i = 0; i < coords.size(); i += 2) {
+    sum_x += coords[i];
+    sum_y += coords[i + 1];
+  }
+  return Point2D(sum_x / count, sum_y / count);
+}
+
+Point2D multiLineCentroid(const Spatial::VectorFeature& feature) {
+  double total_length = 0.0;
+  double weighted_x = 0.0, weighted_y = 0.0;
+
+  for (const auto& range : featurePartRanges(feature)) {
+    std::vector<double> part(feature.coordinates.begin() + range.first * 2,
+                             feature.coordinates.begin() + range.second * 2);
+    double len = lineLength(part);
+    double mx = 0, my = 0;
+    lineMidpoint(part, mx, my);
+    total_length += len;
+    weighted_x += mx * len;
+    weighted_y += my * len;
+  }
+
+  if (total_length < 1e-12) {
+    return multiPointCentroid(feature.coordinates);
+  }
+
+  return Point2D(weighted_x / total_length, weighted_y / total_length);
+}
+
+Point2D multiPolygonCentroid(const Spatial::VectorFeature& feature) {
+  double total_area = 0.0;
+  double weighted_x = 0.0, weighted_y = 0.0;
+
+  for (const auto& range : featurePartRanges(feature)) {
+    std::vector<double> ring(feature.coordinates.begin() + range.first * 2,
+                             feature.coordinates.begin() + range.second * 2);
+    double area = polygonArea(ring);
+    double cx = 0, cy = 0;
+    polygonCentroid(ring, cx, cy);
+    total_area += area;
+    weighted_x += cx * area;
+    weighted_y += cy * area;
+  }
+
+  if (total_area < 1e-12) {
+    return multiPointCentroid(feature.coordinates);
+  }
+
+  return Point2D(weighted_x / total_area, weighted_y / total_area);
+}
+
+Point2D calculateCentroid(const Spatial::VectorFeature& feature) {
   switch (feature.type) {
     case Spatial::VectorFeature::GeometryType::POINT:
       return pointCentroid(feature.coordinates);
@@ -127,8 +184,49 @@ Point2D calculateCentroid(const Spatial::VectorFeature& feature, const std::stri
       return lineMidpoint(feature.coordinates);
     case Spatial::VectorFeature::GeometryType::POLYGON:
       return polygonCentroid(feature.coordinates);
+    case Spatial::VectorFeature::GeometryType::MULTIPOINT:
+      return multiPointCentroid(feature.coordinates);
+    case Spatial::VectorFeature::GeometryType::MULTILINESTRING:
+      return multiLineCentroid(feature);
+    case Spatial::VectorFeature::GeometryType::MULTIPOLYGON:
+      return multiPolygonCentroid(feature);
     default:
       return Point2D(0, 0);
+  }
+}
+
+std::string geometryCategory(Spatial::VectorFeature::GeometryType type) {
+  switch (type) {
+    case Spatial::VectorFeature::GeometryType::POINT:
+    case Spatial::VectorFeature::GeometryType::MULTIPOINT:
+      return "point";
+    case Spatial::VectorFeature::GeometryType::LINESTRING:
+    case Spatial::VectorFeature::GeometryType::MULTILINESTRING:
+      return "line";
+    case Spatial::VectorFeature::GeometryType::POLYGON:
+    case Spatial::VectorFeature::GeometryType::MULTIPOLYGON:
+      return "polygon";
+    default:
+      return "unknown";
+  }
+}
+
+std::string geometryTypeName(Spatial::VectorFeature::GeometryType type) {
+  switch (type) {
+    case Spatial::VectorFeature::GeometryType::POINT:
+      return "point";
+    case Spatial::VectorFeature::GeometryType::LINESTRING:
+      return "line";
+    case Spatial::VectorFeature::GeometryType::POLYGON:
+      return "polygon";
+    case Spatial::VectorFeature::GeometryType::MULTIPOINT:
+      return "multipoint";
+    case Spatial::VectorFeature::GeometryType::MULTILINESTRING:
+      return "multiline";
+    case Spatial::VectorFeature::GeometryType::MULTIPOLYGON:
+      return "multipolygon";
+    default:
+      return "unknown";
   }
 }
 
@@ -142,6 +240,9 @@ struct CentroidStats {
   size_t points_from_points;
   size_t points_from_lines;
   size_t points_from_polygons;
+  size_t points_from_multipoints;
+  size_t points_from_multilines;
+  size_t points_from_multipolygons;
 
   CentroidStats()
       : total_features(0),
@@ -154,11 +255,14 @@ struct CentroidStats {
         max_y(0),
         points_from_points(0),
         points_from_lines(0),
-        points_from_polygons(0) {}
+        points_from_polygons(0),
+        points_from_multipoints(0),
+        points_from_multilines(0),
+        points_from_multipolygons(0) {}
 };
 
 CentroidStats calculateCentroids(const Spatial::VectorDataset& input,
-                                 Spatial::VectorDataset& output, const std::string& method,
+                                 Spatial::VectorDataset& output,
                                  const std::set<std::string>& types) {
   CentroidStats stats;
   stats.total_features = input.features.size();
@@ -177,27 +281,14 @@ CentroidStats calculateCentroids(const Spatial::VectorDataset& input,
   }
 
   for (const auto& feature : input.features) {
-    std::string type_name;
-    switch (feature.type) {
-      case Spatial::VectorFeature::GeometryType::POINT:
-        type_name = "point";
-        break;
-      case Spatial::VectorFeature::GeometryType::LINESTRING:
-        type_name = "line";
-        break;
-      case Spatial::VectorFeature::GeometryType::POLYGON:
-        type_name = "polygon";
-        break;
-      default:
-        type_name = "unknown";
-    }
+    std::string category = geometryCategory(feature.type);
 
-    if (!types.empty() && types.find(type_name) == types.end()) {
+    if (!types.empty() && types.find(category) == types.end()) {
       stats.skipped++;
       continue;
     }
 
-    Point2D centroid = calculateCentroid(feature, method);
+    Point2D centroid = calculateCentroid(feature);
 
     stats.min_x = std::min(stats.min_x, centroid.x);
     stats.min_y = std::min(stats.min_y, centroid.y);
@@ -207,12 +298,20 @@ CentroidStats calculateCentroids(const Spatial::VectorDataset& input,
     stats.processed++;
     stats.points_created++;
 
+    std::string type_name = geometryTypeName(feature.type);
+
     if (type_name == "point")
       stats.points_from_points++;
     else if (type_name == "line")
       stats.points_from_lines++;
     else if (type_name == "polygon")
       stats.points_from_polygons++;
+    else if (type_name == "multipoint")
+      stats.points_from_multipoints++;
+    else if (type_name == "multiline")
+      stats.points_from_multilines++;
+    else if (type_name == "multipolygon")
+      stats.points_from_multipolygons++;
 
     Spatial::VectorFeature result;
     result.type = Spatial::VectorFeature::GeometryType::POINT;
@@ -309,20 +408,27 @@ void printUsage() {
   std::cerr << "spatial_centroid - Calculate centroids of vector geometries\n\n";
   std::cerr << "Usage: spatial_centroid <input> <output> [options]\n\n";
   std::cerr << "Options:\n";
-  std::cerr << "  -method <method>   Centroid method: centroid, mass, midpoint\n";
-  std::cerr << "                     (default: centroid for polygons, midpoint for lines)\n";
   std::cerr << "  -types <list>      Types to process: point,line,polygon\n";
   std::cerr << "                     (default: line,polygon)\n";
+  std::cerr << "                     MULTIPOINT/MULTILINESTRING/MULTIPOLYGON are processed\n";
+  std::cerr << "                     under their family's category (point/line/polygon\n";
+  std::cerr << "                     respectively)\n";
   std::cerr << "  -verbose           Show detailed statistics\n\n";
   std::cerr << "Examples:\n";
   std::cerr << "  spatial_centroid polygons.csv centroids.csv\n";
-  std::cerr << "  spatial_centroid polygons.csv centroids.csv -method mass\n";
   std::cerr << "  spatial_centroid lines.csv midpoints.csv\n";
   std::cerr << "  spatial_centroid polygons.csv centroids.csv -types polygon\n";
   std::cerr << "  spatial_centroid mixed.csv centroids.csv -types point,line,polygon\n\n";
   std::cerr << "Note: The output ALWAYS has POINT geometry in the geometry column.\n";
   std::cerr << "All attributes from the input features are copied to the output points.\n";
-  std::cerr << "A 'source_type' column indicates the original geometry type.\n";
+  std::cerr << "A 'source_type' column indicates the original geometry type (point, line,\n";
+  std::cerr << "polygon, multipoint, multiline, or multipolygon).\n";
+  std::cerr << "Points use their own coordinates; lines use the point at the midpoint of\n";
+  std::cerr << "their path length; polygons use the area-weighted (shoelace) centroid.\n";
+  std::cerr << "MULTIPOLYGON/MULTILINESTRING centroids are computed as the area- (or\n";
+  std::cerr << "length-) weighted combination of each part's own centroid, matching the\n";
+  std::cerr << "convention used by PostGIS/GEOS/Shapely. MULTIPOINT centroids are the\n";
+  std::cerr << "simple average of all points.\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -333,27 +439,13 @@ int main(int argc, char* argv[]) {
 
   std::string input_file;
   std::string output_file;
-  std::string method = "centroid";
   std::set<std::string> types = {"line", "polygon"};
   bool verbose = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
 
-    if (arg == "-method" && i + 1 < argc) {
-      method = toLower(argv[++i]);
-      if (method != "centroid" && method != "mass" && method != "midpoint" && method != "c" &&
-          method != "m" && method != "mp") {
-        std::cerr << "Error: Unknown method: " << method << "\n";
-        return 1;
-      }
-      if (method == "c")
-        method = "centroid";
-      if (method == "m")
-        method = "mass";
-      if (method == "mp")
-        method = "midpoint";
-    } else if (arg == "-types" && i + 1 < argc) {
+    if (arg == "-types" && i + 1 < argc) {
       types.clear();
       std::string types_str = argv[++i];
       auto tokens = split(types_str, ',');
@@ -386,7 +478,6 @@ int main(int argc, char* argv[]) {
   std::cout << "========================================\n\n";
   std::cout << "Input: " << input_file << "\n";
   std::cout << "Output: " << output_file << "\n";
-  std::cout << "Method: " << method << "\n";
   std::cout << "Types: ";
   for (const auto& t : types) std::cout << t << " ";
   std::cout << "\n\n";
@@ -402,6 +493,7 @@ int main(int argc, char* argv[]) {
   std::cout << "Input features: " << dataset.features.size() << "\n";
 
   size_t points = 0, lines = 0, polygons = 0;
+  size_t multipoints = 0, multilines = 0, multipolygons = 0;
   for (const auto& f : dataset.features) {
     switch (f.type) {
       case Spatial::VectorFeature::GeometryType::POINT:
@@ -413,18 +505,30 @@ int main(int argc, char* argv[]) {
       case Spatial::VectorFeature::GeometryType::POLYGON:
         polygons++;
         break;
+      case Spatial::VectorFeature::GeometryType::MULTIPOINT:
+        multipoints++;
+        break;
+      case Spatial::VectorFeature::GeometryType::MULTILINESTRING:
+        multilines++;
+        break;
+      case Spatial::VectorFeature::GeometryType::MULTIPOLYGON:
+        multipolygons++;
+        break;
       default:
         break;
     }
   }
   std::cout << "  Points: " << points << "\n";
   std::cout << "  Lines: " << lines << "\n";
-  std::cout << "  Polygons: " << polygons << "\n\n";
+  std::cout << "  Polygons: " << polygons << "\n";
+  std::cout << "  Multipoints: " << multipoints << "\n";
+  std::cout << "  Multilines: " << multilines << "\n";
+  std::cout << "  Multipolygons: " << multipolygons << "\n\n";
 
   Spatial::VectorDataset output;
-  CentroidStats stats = calculateCentroids(dataset, output, method, types);
+  CentroidStats stats = calculateCentroids(dataset, output, types);
 
-  writeVectorCSV(output, output_file, {"Centroid method: " + method},
+  writeVectorCSV(output, output_file, {},
                  {"Total features: " + std::to_string(output.features.size())});
 
   std::cout << "========================================\n";
@@ -440,6 +544,9 @@ int main(int argc, char* argv[]) {
     std::cout << "  From points: " << stats.points_from_points << "\n";
     std::cout << "  From lines: " << stats.points_from_lines << "\n";
     std::cout << "  From polygons: " << stats.points_from_polygons << "\n";
+    std::cout << "  From multipoints: " << stats.points_from_multipoints << "\n";
+    std::cout << "  From multilines: " << stats.points_from_multilines << "\n";
+    std::cout << "  From multipolygons: " << stats.points_from_multipolygons << "\n";
 
     std::cout << "\nExtent of centroids:\n";
     std::cout << "  Min X: " << std::fixed << std::setprecision(6) << stats.min_x << "\n";

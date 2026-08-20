@@ -9,18 +9,6 @@
 
 namespace Viewer {
 
-// A titled container holding exactly one content widget, used for the four
-// dockable panels (Layers, Attributes, Map, Table).
-//
-// Fl_Group's default resize() repositions/resizes children using a
-// proportional scheme computed from whatever geometry was recorded the
-// first time resize() ran on that group. That baseline is degenerate for
-// panels that start (or get collapsed to) zero height -- expanding them
-// again afterwards leaves the content widget with wrong or zero geometry,
-// i.e. the panel looks empty even though it has data. DockPanel sidesteps
-// that entirely: resize() calls Fl_Widget::resize() (skipping Fl_Group's
-// child-adjustment logic) and then explicitly recomputes the title/content
-// layout from its own current bounds, every time, regardless of history.
 class DockPanel : public Fl_Group {
 public:
   DockPanel(int X, int Y, int W, int H, const char* title_text = nullptr, int margin = 5)
@@ -35,8 +23,6 @@ public:
     }
   }
 
-  // Must be called once, after the content widget has been created (and
-  // after end()), to hand DockPanel ownership of laying it out.
   void setContent(Fl_Widget* content) {
     content_ = content;
     layoutChildren();
@@ -68,4 +54,4 @@ private:
   Fl_Widget* content_ = nullptr;
 };
 
-}  // namespace Viewer
+}

@@ -1,58 +1,3 @@
-// include/core/spatial_style.hpp
-//
-// Shared reader for Spatial TEC ".sty" style files (color maps / symbology),
-// produced by spatial_colormap and consumed by spatial_svg and
-// spatial_viewer. Both consumers used to carry their own copy of this
-// parser; it's extracted here so a change to the format only has to be
-// made once. See ADR-0004 (adr/0004-raster-colormap-and-sty-format.md) for
-// the design rationale, and ADR-0005
-// (adr/0005-svg-legend-and-labels.md) for the legend/label fields below.
-//
-// FORMAT
-// ------
-// A .sty file is a plain-text "properties" file: full-line comments start
-// with '#', keys use dot notation under a "layer.N." namespace (N is a
-// 1-based layer number -- a sidecar .sty describing a single layer always
-// uses "layer.1."; a hand-written multi-layer style file for spatial_svg's
-// "-style" flag can describe layer.1, layer.2, ... in one file):
-//
-//   layer.1.file=cities.csv
-//   layer.1.color=black
-//   layer.1.fill=#3388FF
-//   layer.1.stroke=1
-//   layer.1.opacity=0.8
-//   layer.1.point_size=5
-//   layer.1.class.0.min=0
-//   layer.1.class.0.max=100
-//   layer.1.class.0.color=#FFFFB2
-//   layer.1.class.0.label=0 - 100
-//   ...
-//   layer.1.legend.enabled=true
-//   layer.1.legend.title=Population
-//   layer.1.legend.position=bottom-right
-//   layer.1.show_labels=true
-//   layer.1.label_field=name
-//
-// When "class.*" entries are present, a consumer that draws per-feature
-// (spatial_svg) or per-cell (spatial_viewer) symbology is expected to pick
-// the color of whichever class's [min,max] range a value falls into,
-// instead of the plain "fill" color -- see StyleRule below. There is no
-// color interpolation at render time: every value's color is decided
-// ahead of time by spatial_colormap and written out as a (possibly large)
-// list of narrow classes -- see ADR-0003/ADR-0004 for why "continuous"
-// classification is just many equal-width classes, not interpolation.
-//
-// "legend.*" and "show_labels"/"label_field" are namespaced under
-// "layer.N." like everything else (ADR-0005) -- a legend or label setting
-// always belongs to one specific layer, so a hand-written multi-layer
-// -style file can turn each on/off and position each independently.
-//
-// SIDECAR CONVENTION
-// -------------------
-// A .sty file with the same base name as a data file (cities.csv ->
-// cities.sty, dem.asc -> dem.sty) is considered that layer's style and
-// picked up automatically -- see sidecarStylePath()/loadSidecarStyle()
-// below. A layer with no matching .sty simply has no style to apply.
 #pragma once
 
 #include <filesystem>
@@ -63,9 +8,6 @@
 
 namespace Spatial {
 
-// One class rule: covers values in [min_val, max_val] with the given
-// color ("#RRGGBB" or a CSS color name). label is a human-readable range
-// description, used for legends.
 struct StyleRule {
   double min_val = 0.0;
   double max_val = 0.0;
@@ -73,9 +15,6 @@ struct StyleRule {
   std::string label;
 };
 
-// The style of a single layer, as parsed from one "layer.N.*" block of a
-// .sty file. Defaults here match what spatial_svg used historically for a
-// layer with no style at all.
 struct LayerStyle {
   std::string file;
   std::string color = "black";
@@ -86,34 +25,14 @@ struct LayerStyle {
   double point_size = 5;
   std::vector<StyleRule> rules;
 
-  // Legend metadata (ADR-0005), parsed from "layer.N.legend.*". A consumer
-  // that draws a legend (spatial_svg) uses these to decide whether to draw
-  // one for this layer, its heading, and which corner to stack it in.
-  // legend_title falls back to the layer's classified attribute (or the
-  // data file's base name) when empty -- see spatial_svg.cpp.
   bool legend_enabled = true;
   std::string legend_title;
   std::string legend_position = "bottom-right";
 
-  // Per-feature label metadata (ADR-0005), parsed from
-  // "layer.N.show_labels"/"layer.N.label_field". show_labels=true tells a
-  // consumer to draw label_field's value next to/over each feature
-  // (vector) or cell (raster). Same meaning and field names as
-  // Viewer::Layer::show_labels/label_field, which this mirrors so
-  // spatial_svg and spatial_viewer render labels the same way from the
-  // same .sty.
   bool show_labels = false;
   std::string label_field;
 };
 
-// Parses a .sty file, returning one LayerStyle per "layer.N.*" block found
-// (ordered by N). Returns an empty vector if the file can't be opened or
-// has no layer.* keys. Unrecognized keys under layer.N. (attribute=,
-// palette=, etc. -- metadata spatial_colormap writes for its own
-// documentation purposes) are silently ignored; layer.N.legend.* and
-// layer.N.show_labels/label_field are parsed below (ADR-0005). A key with
-// no "layer." prefix at all (e.g. a leftover from a pre-ADR-0005 file that
-// wrote a bare "legend.*") is ignored the same way it always was.
 inline std::vector<LayerStyle> parseStyleFile(const std::string& filename) {
   std::vector<LayerStyle> layers;
   std::ifstream file(filename);
@@ -179,9 +98,6 @@ inline std::vector<LayerStyle> parseStyleFile(const std::string& filename) {
       } else if (legend_field == "position") {
         layer.legend_position = value;
       }
-      // Other legend.* subkeys are not written anymore (see ADR-0005,
-      // Decision 2) -- no renderer consumes them, so there's nothing to
-      // parse here.
     } else if (field.rfind("class.", 0) == 0) {
       size_t dot_class = field.find('.');
       std::string class_part = field.substr(dot_class + 1);
@@ -212,10 +128,6 @@ inline std::vector<LayerStyle> parseStyleFile(const std::string& filename) {
         rule.label = value;
       }
     }
-    // Other fields (choropleth, attribute, num_classes, method, palette)
-    // are informational metadata written by spatial_colormap; no consumer
-    // needs them to render, so they're intentionally ignored. legend.* and
-    // show_labels/label_field are handled above (ADR-0005).
   }
 
   for (auto& [num, layer] : layer_map) {
@@ -224,21 +136,12 @@ inline std::vector<LayerStyle> parseStyleFile(const std::string& filename) {
   return layers;
 }
 
-// The sidecar .sty path for a given data file: same directory and base
-// name, ".sty" extension. Does not check whether it exists.
 inline std::string sidecarStylePath(const std::string& data_filename) {
   std::filesystem::path p(data_filename);
   p.replace_extension(".sty");
   return p.string();
 }
 
-// Looks for <data_filename-without-extension>.sty next to data_filename
-// and, if found and non-empty, returns its first (and normally only)
-// layer's style in `out`. A sidecar always describes exactly one layer,
-// so the layer number used inside the file is irrelevant here -- the
-// first one found is used regardless of its "layer.N." number. Returns
-// false (leaving `out` untouched) if there's no sidecar or it has no
-// layer.* content.
 inline bool loadSidecarStyle(const std::string& data_filename, LayerStyle& out) {
   std::string sty_path = sidecarStylePath(data_filename);
   if (!std::filesystem::exists(sty_path)) return false;
@@ -248,4 +151,4 @@ inline bool loadSidecarStyle(const std::string& data_filename, LayerStyle& out) 
   return true;
 }
 
-}  // namespace Spatial
+}

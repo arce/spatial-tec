@@ -61,23 +61,21 @@ spatial_centroid <input> <output> [options]
 
 **DESCRIPTION**
 
-Calculates the centroid of each vector feature (lines and polygons by default). The output always has `POINT` geometry — there is no option to keep the original geometry alongside it. Every attribute from the input feature is copied to the corresponding output point as-is, plus a `source_type` column recording the original geometry type (`point`, `line`, or `polygon`).
+Calculates the centroid of each vector feature (lines and polygons by default). Points use their own coordinates, lines use the point at the midpoint of their path length, and polygons use the area-weighted (shoelace) centroid. The output always has `POINT` geometry — there is no option to keep the original geometry alongside it. Every attribute from the input feature is copied to the corresponding output point as-is, plus a `source_type` column recording the original geometry type (`point`, `line`, `polygon`, `multipoint`, `multiline`, or `multipolygon`).
 
-`MULTIPOINT`/`MULTILINESTRING`/`MULTIPOLYGON` input features are not currently supported and are skipped (they don't match any `-types` value, since that option only recognizes `point`, `line`, `polygon`).
+`MULTIPOINT`/`MULTILINESTRING`/`MULTIPOLYGON` input features are fully supported. Each is treated under its family's `-types` category (`MULTIPOINT` under `point`, `MULTILINESTRING` under `line`, `MULTIPOLYGON` under `polygon`) and its centroid is computed as the area- (or length-) weighted combination of each part's own centroid — the same convention used by PostGIS/GEOS/Shapely — so a `MULTIPOLYGON` with a large main body and a small separate piece is pulled toward the larger one rather than averaged with equal weight. `MULTIPOINT` centroids are the simple average of all points. If every part is degenerate (zero total area/length), the calculation falls back to a plain average of all vertices.
 
 **OPTIONS**
 
 | Option | Description |
 |---|---|
-| `-method <method>` | `centroid`, `mass`, or `midpoint` (default: `centroid` for polygons, `midpoint` for lines) |
-| `-types <list>` | Types to process: `point,line,polygon` (default: `line,polygon`) |
+| `-types <list>` | Types to process: `point,line,polygon` (default: `line,polygon`) — also governs the matching multi-geometry family |
 | `-verbose` | Show detailed statistics |
 
 **EXAMPLES**
 
 ```
 spatial_centroid zones.csv centroids.csv
-spatial_centroid polygons.csv centroids.csv -method mass
 spatial_centroid lines.csv midpoints.csv
 spatial_centroid polygons.csv centroids.csv -types polygon
 ```

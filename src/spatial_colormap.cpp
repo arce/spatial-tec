@@ -23,7 +23,7 @@ struct ColorClass {
 
 struct ColorMapConfig {
   std::vector<ColorClass> classes;
-  std::string attribute;  // empty for a raster (or "single") style
+  std::string attribute;
   std::string palette = "YlOrRd";
   std::string method = "quantile";
   int num_classes = 5;
@@ -32,12 +32,8 @@ struct ColorMapConfig {
   std::string legend_title = "";
   std::string legend_position = "bottom-right";
   std::string output_file = "";
-  // Set (and `classes` left empty) for -method single: no classification,
-  // just one fixed color for the whole layer.
   std::string fixed_color = "";
 
-  // Per-feature label metadata (ADR-0005) -- see -show-labels/-label-field
-  // in printUsage() below.
   bool show_labels = false;
   std::string label_field;
 };
@@ -200,13 +196,6 @@ public:
   }
 };
 
-// Classifies a plain list of numeric values (regardless of whether they
-// came from a CSV attribute column or from raster cell values -- see
-// extractVectorValues/extractRasterValues below) into color classes.
-// Every method here produces the same output shape: a list of
-// {min_val, max_val, color, label} classes with the color already
-// resolved, ready to be looked up by value with no further computation --
-// see ADR-0004 for why there is no interpolation-at-render-time method.
 class ColorMapGenerator {
 private:
   ColorPalette palette;
@@ -338,10 +327,6 @@ private:
     return classes;
   }
 
-  // Classes centered on the mean, one standard deviation wide each. The
-  // first/last class are stretched to actually cover the data's min/max
-  // (a few outliers several sigma away from the mean shouldn't fall
-  // outside every class).
   std::vector<ColorClass> generateStandardDeviation(const std::vector<double>& values, int num_classes,
                                                      const std::vector<std::string>& colors) {
     std::vector<ColorClass> classes;
@@ -382,8 +367,6 @@ private:
     return classes;
   }
 
-  // Rounds a magnitude to a "nice" 1/2/5 * 10^n step, the same trick R's
-  // pretty() and most charting libraries use for readable axis ticks.
   static double niceNum(double range, bool round) {
     if (range <= 0) return 1.0;
     double exponent = std::floor(std::log10(range));
@@ -403,10 +386,6 @@ private:
     return nice_fraction * std::pow(10, exponent);
   }
 
-  // Breaks at round numbers (10, 25, 50...) instead of raw quantile/
-  // equal-interval cut points. The resulting class count is close to but
-  // not guaranteed to be exactly num_classes -- that's inherent to
-  // rounding to nice steps.
   std::vector<ColorClass> generatePrettyBreaks(const std::vector<double>& values, int num_classes,
                                                const std::string& palette_name) {
     std::vector<ColorClass> classes;
@@ -425,7 +404,7 @@ private:
     std::vector<double> breaks;
     for (double b = nice_min; b <= nice_max + step * 0.5; b += step) {
       breaks.push_back(b);
-      if (breaks.size() > 500) break;  // safety valve against a pathological step
+      if (breaks.size() > 500) break;
     }
     if (breaks.size() < 2) breaks = {min_val, max_val};
 
@@ -442,10 +421,6 @@ private:
     return classes;
   }
 
-  // Class widths grow in geometric progression -- useful for very skewed
-  // data (population, income) where equal_interval leaves almost
-  // everything in one class. Values <= 0 are handled by shifting the
-  // whole range positive before computing the progression.
   std::vector<ColorClass> generateGeometricInterval(const std::vector<double>& values, int num_classes,
                                                      const std::vector<std::string>& colors) {
     std::vector<ColorClass> classes;
@@ -475,8 +450,6 @@ private:
     return classes;
   }
 
-  // Fixed-width classes: the user gives the step, the class count falls
-  // out of dividing the data range by it.
   std::vector<ColorClass> generateDefinedInterval(const std::vector<double>& values, double interval_width,
                                                    const std::vector<std::string>& colors) {
     std::vector<ColorClass> classes;
@@ -498,7 +471,6 @@ private:
     return classes;
   }
 
-  // User-supplied break points, taken as-is (sorted) instead of computed.
   std::vector<ColorClass> generateManual(const std::vector<double>& breaks_in,
                                          const std::vector<std::string>& colors) {
     std::vector<ColorClass> classes;
@@ -549,9 +521,6 @@ private:
   }
 
 public:
-  // -attribute value from a vector dataset, numeric entries only (same
-  // behavior as before this was renamed from the unqualified
-  // extractValues).
   std::vector<double> extractVectorValues(const Spatial::VectorDataset& dataset,
                                           const std::string& attribute) {
     std::vector<double> values;
@@ -572,9 +541,6 @@ public:
     return values;
   }
 
-  // Every non-nodata cell value of a raster, flattened. There is no
-  // "attribute" to name for a raster -- the value classified is the cell
-  // itself.
   std::vector<double> extractRasterValues(const Spatial::RasterDataset& dataset) {
     std::vector<double> values;
     values.reserve(dataset.data.size());
@@ -586,9 +552,6 @@ public:
     return values;
   }
 
-  // The single fixed color for -method single: just the first stop of the
-  // chosen palette, so "single" still reads as "a color from that
-  // palette" rather than an arbitrary hardcoded default.
   std::string singleColor(const std::string& palette_name) {
     return palette.getColors(palette_name, 1)[0];
   }
@@ -625,10 +588,6 @@ public:
       config.classes = generateGeometricInterval(values, num_classes,
                                                   palette.getColors(palette_name, num_classes));
     } else if (method == "continuous") {
-      // Same as equal_interval, just meant to be called with a much finer
-      // num_classes (main() bumps the default) -- see ADR-0004: many
-      // narrow precomputed classes read as continuous, with no
-      // interpolation needed from any consumer.
       config.classes =
           generateEqualInterval(values, num_classes, palette.getColors(palette_name, num_classes));
     } else if (method == "defined_interval") {
@@ -700,14 +659,6 @@ public:
       }
     }
 
-    // Legend keys are namespaced under layer.N. like everything else (see
-    // ADR-0005) -- a legend always belongs to one layer, so a hand-written
-    // multi-layer -style file can turn each on/off and position each
-    // independently. Only enabled/title/position have a renderer that
-    // consumes them (spatial_svg) -- the finer appearance knobs an earlier
-    // version of this writer emitted (font_size, font_color, background,
-    // border_color, border_width, padding, margin, columns) were metadata
-    // nobody read, so they're not written anymore (ADR-0005, Decision 2).
     if (config.include_legend) {
       out << "# Legend configuration\n";
       out << "layer." << config.layer_num << ".legend.enabled=true\n";
@@ -961,15 +912,11 @@ int main(int argc, char* argv[]) {
   ColorMapConfig config;
 
   if (method == "single") {
-    // No classification at all -- just one fixed color for the whole
-    // layer, taken from the chosen palette (see ADR-0004, Grupo 2).
     config.method = method;
     config.palette = palette;
     config.layer_num = layer_num;
     config.fixed_color = generator.singleColor(palette);
   } else if (method == "manual") {
-    // Manual breaks don't need any data read at all -- the classes come
-    // straight from -breaks.
     config = generator.generate({}, palette, method, num_classes, layer_num, interval_width, manual_breaks);
   } else if (is_raster) {
     Spatial::ASCIIGridReader reader;
@@ -1013,12 +960,6 @@ int main(int argc, char* argv[]) {
   config.include_legend = include_legend;
   config.legend_position = legend_position;
 
-  // -show-labels with no explicit -label-field on a vector layer falls
-  // back to the classified attribute itself -- better than emitting
-  // show_labels=true with nothing to show (see ADR-0005, Decision 5). For
-  // raster there's no attribute to fall back to; -show-labels there just
-  // enables spatial_viewer's existing per-cell label mechanism (RAT label
-  // field or raw cell value), which doesn't use label_field at all.
   config.show_labels = show_labels;
   config.label_field = label_field;
   if (config.show_labels && config.label_field.empty() && !is_raster) {

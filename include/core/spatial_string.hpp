@@ -1,9 +1,3 @@
-// include/core/spatial_string.hpp
-//
-// Utilidades de manejo de strings compartidas por todos los programas
-// spatial_*. Antes vivian copiadas (byte a byte, en su mayoria) en cada
-// archivo de src/*.cpp; se consolidan aqui para evitar mantener 15-20
-// copias identicas.
 #pragma once
 #include <string>
 #include <vector>
@@ -39,8 +33,6 @@ inline bool isNumber(const std::string& s) {
     }
 }
 
-// Divide por un caracter delimitador, recortando espacios y descartando
-// tokens vacios (comportamiento usado por la mayoria de los parsers CSV/ASC).
 inline std::vector<std::string> split(const std::string& s, char delimiter) {
     std::vector<std::string> tokens;
     std::string token;
@@ -52,7 +44,6 @@ inline std::vector<std::string> split(const std::string& s, char delimiter) {
     return tokens;
 }
 
-// Variante con delimitador de multiples caracteres (p.ej. "AND", ">=").
 inline std::vector<std::string> split(const std::string& s, const std::string& delimiter) {
     std::vector<std::string> tokens;
     size_t pos = 0;
@@ -66,11 +57,6 @@ inline std::vector<std::string> split(const std::string& s, const std::string& d
     return tokens;
 }
 
-// Split de una linea CSV respetando comillas dobles y parentesis.
-// Los parentesis se respetan ademas de las comillas porque los campos de
-// geometria WKT (LINESTRING(...), POLYGON(...)) suelen venir sin comillas
-// en los CSV de este proyecto, y contienen comas internas entre puntos que
-// no deben partir el campo.
 inline std::vector<std::string> splitCSV(const std::string& line) {
     std::vector<std::string> result;
     std::string current;
