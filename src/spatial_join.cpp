@@ -79,12 +79,13 @@ bool evaluateSpatialRelation(const Spatial::VectorFeature& source,
                              const Spatial::VectorFeature& target, JoinType type) {
   switch (type) {
     case WITHIN: {
-      if (target.type != Spatial::VectorFeature::GeometryType::POLYGON) {
+      if (target.type != Spatial::VectorFeature::GeometryType::POLYGON &&
+          target.type != Spatial::VectorFeature::GeometryType::MULTIPOLYGON) {
         return false;
       }
 
       for (size_t i = 0; i < source.coordinates.size(); i += 2) {
-        if (!pointInPolygon(source.coordinates[i], source.coordinates[i + 1], target.coordinates)) {
+        if (!pointInPolygonFeature(source.coordinates[i], source.coordinates[i + 1], target)) {
           return false;
         }
       }
@@ -110,10 +111,10 @@ bool evaluateSpatialRelation(const Spatial::VectorFeature& source,
           if (dist < 1e-9)
             return true;
         }
-      } else if (target.type == Spatial::VectorFeature::GeometryType::POLYGON) {
+      } else if (target.type == Spatial::VectorFeature::GeometryType::POLYGON ||
+                 target.type == Spatial::VectorFeature::GeometryType::MULTIPOLYGON) {
         for (size_t i = 0; i < source.coordinates.size(); i += 2) {
-          if (pointInPolygon(source.coordinates[i], source.coordinates[i + 1],
-                             target.coordinates)) {
+          if (pointInPolygonFeature(source.coordinates[i], source.coordinates[i + 1], target)) {
             return true;
           }
         }

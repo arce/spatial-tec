@@ -88,13 +88,13 @@ bool evaluateSpatialRelation(const Spatial::VectorFeature& feature1,
 
   switch (type) {
     case WITHIN: {
-      if (feature2.type != Spatial::VectorFeature::GeometryType::POLYGON) {
+      if (feature2.type != Spatial::VectorFeature::GeometryType::POLYGON &&
+          feature2.type != Spatial::VectorFeature::GeometryType::MULTIPOLYGON) {
         return false;
       }
 
       for (size_t i = 0; i < feature1.coordinates.size(); i += 2) {
-        if (!pointInPolygon(feature1.coordinates[i], feature1.coordinates[i + 1],
-                            feature2.coordinates)) {
+        if (!pointInPolygonFeature(feature1.coordinates[i], feature1.coordinates[i + 1], feature2)) {
           return false;
         }
       }
@@ -107,9 +107,10 @@ bool evaluateSpatialRelation(const Spatial::VectorFeature& feature1,
 
     case INTERSECTS: {
       if (feature2.type == Spatial::VectorFeature::GeometryType::POINT) {
-        if (feature1.type == Spatial::VectorFeature::GeometryType::POLYGON) {
-          return pointInPolygon(feature2.coordinates[0], feature2.coordinates[1],
-                                feature1.coordinates);
+        if (feature1.type == Spatial::VectorFeature::GeometryType::POLYGON ||
+            feature1.type == Spatial::VectorFeature::GeometryType::MULTIPOLYGON) {
+          return pointInPolygonFeature(feature2.coordinates[0], feature2.coordinates[1],
+                                       feature1);
         }
 
         for (size_t i = 0; i < feature1.coordinates.size(); i += 2) {
@@ -125,10 +126,11 @@ bool evaluateSpatialRelation(const Spatial::VectorFeature& feature1,
           if (dist < 1e-9)
             return true;
         }
-      } else if (feature2.type == Spatial::VectorFeature::GeometryType::POLYGON) {
+      } else if (feature2.type == Spatial::VectorFeature::GeometryType::POLYGON ||
+                 feature2.type == Spatial::VectorFeature::GeometryType::MULTIPOLYGON) {
         for (size_t i = 0; i < feature1.coordinates.size(); i += 2) {
-          if (pointInPolygon(feature1.coordinates[i], feature1.coordinates[i + 1],
-                             feature2.coordinates)) {
+          if (pointInPolygonFeature(feature1.coordinates[i], feature1.coordinates[i + 1],
+                                    feature2)) {
             return true;
           }
         }

@@ -173,6 +173,29 @@ inline std::vector<std::pair<size_t, size_t>> featurePartRanges(const Spatial::V
     return ranges;
 }
 
+// Point-in-polygon test that works for both POLYGON and MULTIPOLYGON features.
+// For MULTIPOLYGON, each top-level part (as delimited by part_starts) is a
+// separate, disjoint polygon ring-set, so the point is "inside" the feature
+// if it falls inside ANY one of the parts.
+inline bool pointInPolygonFeature(double x, double y, const Spatial::VectorFeature& feature) {
+    if (feature.type == Spatial::VectorFeature::GeometryType::POLYGON) {
+        return pointInPolygon(x, y, feature.coordinates);
+    }
+
+    if (feature.type == Spatial::VectorFeature::GeometryType::MULTIPOLYGON) {
+        for (const auto& range : featurePartRanges(feature)) {
+            std::vector<double> part(feature.coordinates.begin() + range.first * 2,
+                                      feature.coordinates.begin() + range.second * 2);
+            if (pointInPolygon(x, y, part)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    return false;
+}
+
 inline std::string geometryToWKT(const Spatial::VectorFeature& feature, bool close_ring = false) {
     std::string result;
     switch (feature.type) {
