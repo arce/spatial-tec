@@ -53,13 +53,6 @@ bool anyPolygonContainsFeature(const std::vector<std::vector<double>>& polygons,
   return false;
 }
 
-// Reads every POLYGON/MULTIPOLYGON feature from the given CSV as a list of
-// independent rings (one entry per ring/part, via featurePartRanges -- see
-// spatial_geom.hpp), using the shared SpatialCSVReader instead of
-// hand-parsing WKT text cell by cell. A target file with more than one
-// polygon row (e.g. one row per canton/distrito) is tested ring by ring
-// instead of having every row's coordinates concatenated into a single,
-// geometrically meaningless ring.
 std::vector<std::vector<double>> readPolygonsFromCSV(const std::string& filename) {
   std::vector<std::vector<double>> polygons;
 

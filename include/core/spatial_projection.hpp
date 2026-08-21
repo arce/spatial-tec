@@ -1,51 +1,29 @@
-// include/core/spatial_projection.hpp
-//
-// Conversion geodesica y proyeccion Transversa de Mercator (Gauss-Kruger),
-// mas Web Mercator (esferica), implementadas directamente con las formulas
-// clasicas de Snyder ("Map Projections: A Working Manual", USGS Professional
-// Paper 1395, 1987) -- sin dependencia externa (PROJ/GDAL), consistente con
-// el resto del proyecto (parser propio de Shapefile, CSV, GeoJSON, etc.).
-//
-// La serie de Snyder (orden e^6/e^8) da precision sub-milimetrica dentro de
-// unos pocos grados del meridiano central, que es exactamente el caso de
-// CRTM05 y de las zonas UTM que cubren Costa Rica -- no hace falta la serie
-// de Kruger de orden superior (Karney 2011) que usan PROJ/GeographicLib para
-// exactitud a escala de todo el elipsoide.
 #pragma once
 #include <cmath>
 #include <string>
 
 namespace Spatial {
 
-// ===== Elipsoide =====
-// Todas las proyecciones soportadas (CRTM05, UTM, y la esfera usada por Web
-// Mercator) se definen sobre el elipsoide WGS84 -- ver la nota de scope en
-// doc/commands/projection.md sobre CR05 vs WGS84.
 struct Ellipsoid {
-    double a;  // semieje mayor (m)
-    double f;  // achatamiento
+    double a;
+    double f;
 };
 
 inline const Ellipsoid WGS84_ELLIPSOID{6378137.0, 1.0 / 298.257223563};
 
-// ===== Parametros de una proyeccion Transversa de Mercator =====
 struct TMParams {
-    double a;                // semieje mayor (m)
-    double f;                // achatamiento
-    double lon0_deg;         // meridiano central (grados)
-    double lat0_deg;         // latitud de origen (grados)
-    double k0;                // factor de escala en el meridiano central
-    double false_easting;    // falso este (m)
-    double false_northing;   // falso norte (m)
+    double a;
+    double f;
+    double lon0_deg;
+    double lat0_deg;
+    double k0;
+    double false_easting;
+    double false_northing;
 };
 
-// CRTM05 (EPSG:5367 / EPSG:8908) -- sistema oficial de Costa Rica desde 2007.
 inline const TMParams CRTM05_PARAMS{
     WGS84_ELLIPSOID.a, WGS84_ELLIPSOID.f, -84.0, 0.0, 0.9999, 500000.0, 0.0};
 
-// UTM zona 16N (EPSG:32616) y 17N (EPSG:32617), WGS84 -- Costa Rica queda
-// dividido entre ambas, que fue la razon original para crear CRTM05 como
-// zona unica centrada en el pais.
 inline const TMParams UTM16N_PARAMS{
     WGS84_ELLIPSOID.a, WGS84_ELLIPSOID.f, -87.0, 0.0, 0.9996, 500000.0, 0.0};
 inline const TMParams UTM17N_PARAMS{
@@ -56,8 +34,6 @@ namespace proj_detail {
 inline double deg2rad(double d) { return d * M_PI / 180.0; }
 inline double rad2deg(double r) { return r * 180.0 / M_PI; }
 
-// Longitud de arco de meridiano desde el ecuador hasta la latitud phi
-// (radianes), serie de Snyder eq. 3-21 (orden e^6).
 inline double meridionalArc(double phi, double e2, double a) {
     double e4 = e2 * e2;
     double e6 = e4 * e2;
@@ -69,10 +45,8 @@ inline double meridionalArc(double phi, double e2, double a) {
                 c6 * std::sin(6.0 * phi));
 }
 
-}  // namespace proj_detail
+}
 
-// Directa: geografica (lat, lon en grados, WGS84) -> TM (easting, northing
-// en metros). Formulas de Snyder eq. 8-9 a 8-11.
 inline void geographicToTM(double lat_deg, double lon_deg, const TMParams& p, double& easting,
                             double& northing) {
     using namespace proj_detail;
@@ -115,9 +89,6 @@ inline void geographicToTM(double lat_deg, double lon_deg, const TMParams& p, do
                p.false_northing;
 }
 
-// Inversa: TM (easting, northing en metros) -> geografica (lat, lon en
-// grados, WGS84). Formulas de Snyder eq. 8-17 a 8-22 (latitud de pie de
-// meridiano via serie, sin iteracion).
 inline void tmToGeographic(double easting, double northing, const TMParams& p, double& lat_deg,
                             double& lon_deg) {
     using namespace proj_detail;
@@ -180,12 +151,6 @@ inline void tmToGeographic(double easting, double northing, const TMParams& p, d
     lon_deg = rad2deg(lambda);
 }
 
-// Web Mercator / Pseudo-Mercator (EPSG:3857), la proyeccion que usan
-// OpenStreetMap, Google Maps, Leaflet, Mapbox, etc. para sus tiles.
-// Formulas esfericas usando el semieje mayor de WGS84 como radio (asi es
-// como EPSG:3857 esta definida oficialmente -- no es una esfera de radio
-// medio, y por eso "Pseudo-Mercator" no es una proyeccion conforme estricta
-// del elipsoide).
 inline void geographicToWebMercator(double lat_deg, double lon_deg, double& x, double& y) {
     using namespace proj_detail;
     double R = WGS84_ELLIPSOID.a;
@@ -204,11 +169,8 @@ inline void webMercatorToGeographic(double x, double y, double& lat_deg, double&
     lon_deg = rad2deg(lambda);
 }
 
-// ===== Sistema de referencia soportado por spatial_reproject =====
 enum class ProjSystem { WGS84, CRTM05, UTM16N, UTM17N, WEBMERCATOR };
 
-// Reconoce el identificador de un sistema (alias comunes incluidos) y
-// devuelve false si no se reconoce.
 inline bool parseProjSystem(const std::string& id_lower, ProjSystem& out) {
     if (id_lower == "wgs84" || id_lower == "geographic" || id_lower == "geo" ||
         id_lower == "epsg:4326" || id_lower == "4326") {
@@ -240,8 +202,6 @@ inline bool parseProjSystem(const std::string& id_lower, ProjSystem& out) {
 
 inline bool isGeographicSystem(ProjSystem s) { return s == ProjSystem::WGS84; }
 
-// Nombre canonico corto, usado en mensajes y en el nombre de columna
-// source_x/source_y si hiciera falta.
 inline std::string projSystemName(ProjSystem s) {
     switch (s) {
         case ProjSystem::WGS84:
@@ -258,8 +218,6 @@ inline std::string projSystemName(ProjSystem s) {
     return "unknown";
 }
 
-// Etiqueta descriptiva, usada para el encabezado "# CRS: ..." del CSV de
-// salida.
 inline std::string projSystemLabel(ProjSystem s) {
     switch (s) {
         case ProjSystem::WGS84:
@@ -276,10 +234,6 @@ inline std::string projSystemLabel(ProjSystem s) {
     return "unknown";
 }
 
-// Convierte un punto (x, y) desde `from` hacia `to`, pasando por geografica
-// WGS84 como paso intermedio cuando ninguno de los dos es ya geografico (p.
-// ej. UTM16N -> CRTM05 hace UTM16N -> WGS84 -> CRTM05). Si from == to, copia
-// directo sin perder precision por una vuelta redundante.
 inline void reprojectPoint(double x, double y, ProjSystem from, ProjSystem to, double& out_x,
                             double& out_y) {
     if (from == to) {
@@ -334,4 +288,4 @@ inline void reprojectPoint(double x, double y, ProjSystem from, ProjSystem to, d
     }
 }
 
-}  // namespace Spatial
+}

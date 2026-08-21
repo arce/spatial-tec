@@ -32,14 +32,6 @@ struct BBox {
   }
 };
 
-// Reads every POLYGON/MULTIPOLYGON feature from the given CSV as a list of
-// independent rings (one entry per ring/part, via featurePartRanges -- see
-// spatial_geom.hpp), using the shared SpatialCSVReader. Replaces a previous
-// hand-rolled parser (naive split(line, ',') on the raw CSV line) that
-// broke on any WKT with internal commas -- since the comma split doesn't
-// respect parentheses, a token like "POLYGON(0 0" never contained a
-// matching ")" and the polygon was never extracted at all (see the fix to
-// the identical bug in spatial_clip_vector.cpp for the full writeup).
 std::vector<std::vector<double>> readPolygonsFromCSV(const std::string& filename) {
   std::vector<std::vector<double>> polygons;
 

@@ -193,6 +193,9 @@ void joinWithin(const Spatial::VectorDataset& source, const Spatial::VectorDatas
     target_col_map[col] = new_name;
   }
 
+  output.columns.push_back("_join_type");
+  output.columns.push_back("_target_id");
+
   for (const auto& source_feature : source.features) {
     Spatial::VectorFeature result = source_feature;
 
@@ -253,6 +256,9 @@ void joinContains(const Spatial::VectorDataset& source, const Spatial::VectorDat
     target_col_map[col] = new_name;
   }
 
+  output.columns.push_back("_join_type");
+  output.columns.push_back("_target_id");
+
   for (const auto& source_feature : source.features) {
     Spatial::VectorFeature result = source_feature;
 
@@ -310,6 +316,9 @@ void joinIntersects(const Spatial::VectorDataset& source, const Spatial::VectorD
     output.columns.push_back(new_name);
     target_col_map[col] = new_name;
   }
+
+  output.columns.push_back("_join_type");
+  output.columns.push_back("_target_id");
 
   for (const auto& source_feature : source.features) {
     Spatial::VectorFeature result = source_feature;
@@ -370,6 +379,8 @@ void joinNearest(const Spatial::VectorDataset& source, const Spatial::VectorData
   }
 
   output.columns.push_back(prefix + "distance");
+  output.columns.push_back("_join_type");
+  output.columns.push_back("_target_id");
 
   for (const auto& source_feature : source.features) {
     Spatial::VectorFeature result = source_feature;

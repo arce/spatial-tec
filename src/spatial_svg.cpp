@@ -239,6 +239,76 @@ std::string renderLegendBox(const Spatial::LayerStyle& layer_info, int canvas_wi
   return svg;
 }
 
+// One combined box, one row per layer that has no per-class rules (i.e. not styled via
+// spatial_colormap's classification): a plain swatch (as it's actually drawn: fill_color if
+// -fill was given, otherwise the stroke color) plus the layer's name, so that with several
+// plain-colored layers it's still clear which color belongs to which layer. Layers that already
+// get their own per-class legend from renderLegendBox are skipped here to avoid double listing.
+std::string renderLayersLegend(const std::vector<Spatial::LayerStyle>& layers, int canvas_width,
+                               int canvas_height, std::map<std::string, double>& corner_offsets) {
+  std::vector<const Spatial::LayerStyle*> entries;
+  for (const auto& layer_info : layers) {
+    if (!layer_info.rules.empty()) continue;
+    if (!layer_info.legend_enabled) continue;
+    entries.push_back(&layer_info);
+  }
+  if (entries.empty()) return "";
+
+  const double swatch = 12, row_h = 18, pad = 8, title_h = 20, gap = 10, margin = 15;
+  size_t n = entries.size();
+
+  std::string title = "Capas";
+  std::vector<std::string> labels;
+  labels.reserve(n);
+  size_t max_chars = title.size();
+  for (const auto* layer_info : entries) {
+    std::string label = layer_info->legend_title;
+    if (label.empty()) {
+      label = std::filesystem::path(layer_info->file).stem().string();
+    }
+    max_chars = std::max(max_chars, label.size());
+    labels.push_back(label);
+  }
+
+  double box_w = std::max(120.0, max_chars * 6.2 + swatch + pad * 3);
+  double box_h = title_h + n * row_h + pad * 2;
+
+  std::string position =
+      entries.front()->legend_position.empty() ? "bottom-right" : entries.front()->legend_position;
+  double& offset = corner_offsets[position];
+
+  bool from_right = position.find("right") != std::string::npos;
+  bool from_bottom = position.find("bottom") != std::string::npos;
+  double box_x = from_right ? (canvas_width - margin - box_w) : margin;
+  double box_y = from_bottom ? (canvas_height - margin - box_h - offset) : (margin + offset);
+
+  offset += box_h + gap;
+
+  std::string svg;
+  svg += "  <g class=\"legend layers-legend\">\n";
+  svg += "    <rect x=\"" + std::to_string(box_x) + "\" y=\"" + std::to_string(box_y) + "\" ";
+  svg += "width=\"" + std::to_string(box_w) + "\" height=\"" + std::to_string(box_h) + "\" ";
+  svg += "fill=\"#FFFFFF\" fill-opacity=\"0.9\" stroke=\"#999999\" stroke-width=\"1\"/>\n";
+  svg += "    <text x=\"" + std::to_string(box_x + pad) + "\" y=\"" + std::to_string(box_y + pad + 10) + "\" ";
+  svg += "font-size=\"12\" font-weight=\"bold\" font-family=\"sans-serif\" fill=\"#222222\">" +
+         escapeXML(title) + "</text>\n";
+
+  for (size_t i = 0; i < n; ++i) {
+    const auto* layer_info = entries[i];
+    double row_y = box_y + title_h + pad + i * row_h;
+    std::string swatch_fill = layer_info->fill ? layer_info->fill_color : "none";
+    svg += "    <rect x=\"" + std::to_string(box_x + pad) + "\" y=\"" + std::to_string(row_y) + "\" ";
+    svg += "width=\"" + std::to_string(swatch) + "\" height=\"" + std::to_string(swatch) + "\" ";
+    svg += "fill=\"" + swatch_fill + "\" stroke=\"" + layer_info->color + "\" stroke-width=\"1.5\"/>\n";
+    svg += "    <text x=\"" + std::to_string(box_x + pad + swatch + 6) + "\" y=\"" +
+           std::to_string(row_y + swatch - 1) + "\" font-size=\"11\" font-family=\"sans-serif\" fill=\"#222222\">" +
+           escapeXML(labels[i]) + "</text>\n";
+  }
+
+  svg += "  </g>\n";
+  return svg;
+}
+
 std::string applyRules(const Spatial::VectorFeature& feature, const Spatial::LayerStyle& layer) {
   if (layer.rules.empty()) {
     return layer.fill ? layer.fill_color : "none";
@@ -381,23 +451,7 @@ std::string generateSVG(const std::vector<Spatial::LayerStyle>& layers, int widt
   for (const auto& layer_info : layers) {
     svg += renderLegendBox(layer_info, width, height, corner_offsets);
   }
-
-  double map_width = global_bbox.width();
-  double scale_bar_width = map_width * 0.1;
-  if (scale_bar_width > 0) {
-    double x1 = global_bbox.minx + map_width * 0.05;
-    double y1 = global_bbox.miny + map_width * 0.05;
-    double x2 = x1 + scale_bar_width;
-
-    std::string p1 = transformer.transform(x1, y1);
-    std::string p2 = transformer.transform(x2, y1);
-
-    svg += "  <line x1=\"" + p1.substr(0, p1.find(' ')) + "\" ";
-    svg += "y1=\"" + p1.substr(p1.find(' ') + 1) + "\" ";
-    svg += "x2=\"" + p2.substr(0, p2.find(' ')) + "\" ";
-    svg += "y2=\"" + p2.substr(p2.find(' ') + 1) + "\" ";
-    svg += "stroke=\"black\" stroke-width=\"2\"/>\n";
-  }
+  svg += renderLayersLegend(layers, width, height, corner_offsets);
 
   svg += "</svg>\n";
 
@@ -424,14 +478,20 @@ void printUsage() {
   std::cerr << "  -height <pixels>     SVG height (default: 600)\n";
   std::cerr << "  -background <color>  Background color (default: white)\n";
   std::cerr << "  -title <text>        Map title\n\n";
-  std::cerr << "Legend and per-feature labels (ADR-0005) come entirely from each layer's\n";
-  std::cerr << ".sty -- there is no command-line flag for them, since both need data (class\n";
-  std::cerr << "colors, an attribute column) that only spatial_colormap's output has. A\n";
-  std::cerr << "legend is drawn per layer that has layer.N.legend.enabled=true and at least\n";
-  std::cerr << "one class; stacked in the corner given by layer.N.legend.position\n";
+  std::cerr << "Per-class legends and per-feature labels (ADR-0005) come entirely from each\n";
+  std::cerr << "layer's .sty -- there is no command-line flag for them, since both need data\n";
+  std::cerr << "(class colors, an attribute column) that only spatial_colormap's output has. A\n";
+  std::cerr << "per-class legend is drawn per layer that has layer.N.legend.enabled=true and at\n";
+  std::cerr << "least one class; stacked in the corner given by layer.N.legend.position\n";
   std::cerr << "(top-left/top-right/bottom-left/bottom-right, default bottom-right). Labels\n";
   std::cerr << "are drawn per layer that has layer.N.show_labels=true and layer.N.label_field\n";
   std::cerr << "set -- see 'spatial_colormap -help' for -show-labels/-label-field/-legend-position.\n\n";
+  std::cerr << "Plain layers (no .sty classification, e.g. -layer file.csv -color/-fill given\n";
+  std::cerr << "directly) automatically get one row each in a single combined \"Capas\" legend box,\n";
+  std::cerr << "so it stays clear which color belongs to which layer when several are drawn\n";
+  std::cerr << "together. Its label is the layer's file name unless overridden by\n";
+  std::cerr << "layer.N.legend.title in a .sty; set layer.N.legend.enabled=false to omit a layer\n";
+  std::cerr << "from it.\n\n";
   std::cerr << "Examples:\n";
   std::cerr << "  spatial_svg map.svg -style style.sty\n";
   std::cerr << "  spatial_svg map.svg -layer countries.csv -color blue -fill lightblue\n";
