@@ -45,6 +45,17 @@ std::string escapeCSV(const std::string& value) {
   return value;
 }
 
+std::string replaceCommas(const std::string& value, const std::string& replacement) {
+  if (replacement.find(',') != std::string::npos) return value;
+  std::string result = value;
+  size_t pos = 0;
+  while ((pos = result.find(',', pos)) != std::string::npos) {
+    result.replace(pos, 1, replacement);
+    pos += replacement.length();
+  }
+  return result;
+}
+
 void printUsage() {
   std::cerr << "spatial_shp2csv - Convert a Shapefile (.shp/.shx/.dbf) to spatial CSV\n\n";
   std::cerr << "Usage: spatial_shp2csv <input.shp> <output.csv> [options]\n\n";
@@ -52,6 +63,9 @@ void printUsage() {
   std::cerr << "  -no_geometry        Exclude geometry column\n";
   std::cerr << "  -include_type       Include geometry type column\n";
   std::cerr << "  -props <list>       Only include specified attribute fields (comma-separated)\n";
+  std::cerr << "  -comma_replacement <str>  Replace commas found inside DBF attribute values\n";
+  std::cerr << "                      with <str> so they don't break the CSV column layout\n";
+  std::cerr << "                      (default: \"-\"). Not applied to the geometry column.\n";
   std::cerr << "  -verbose            Show detailed information\n\n";
   std::cerr << "Notes:\n";
   std::cerr << "  <input.shp> may also be given as the .dbf path or with no extension -- the\n";
@@ -64,6 +78,7 @@ void printUsage() {
   std::cerr << "  spatial_shp2csv parcels.shp parcels.csv\n";
   std::cerr << "  spatial_shp2csv parcels.shp parcels.csv -props name,zoning\n";
   std::cerr << "  spatial_shp2csv parcels.shp parcels.csv -include_type\n";
+  std::cerr << "  spatial_shp2csv parcels.shp parcels.csv -comma_replacement \";\"\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -78,6 +93,7 @@ int main(int argc, char* argv[]) {
   bool include_type = false;
   bool verbose = false;
   std::set<std::string> include_props;
+  std::string comma_replacement = "-";
 
   for (int i = 3; i < argc; ++i) {
     std::string arg = argv[i];
@@ -93,6 +109,8 @@ int main(int argc, char* argv[]) {
         std::string prop = trim(t);
         if (!prop.empty()) include_props.insert(prop);
       }
+    } else if (arg == "-comma_replacement" && i + 1 < argc) {
+      comma_replacement = argv[++i];
     } else {
       std::cerr << "Error: Unknown option: " << arg << "\n";
       return 1;
@@ -109,6 +127,7 @@ int main(int argc, char* argv[]) {
     for (const auto& p : include_props) std::cout << p << " ";
     std::cout << "\n";
   }
+  std::cout << "Comma replacement (DBF fields): \"" << comma_replacement << "\"\n";
   std::cout << "\n";
 
   Spatial::ShapefileReader reader;
@@ -144,11 +163,11 @@ int main(int argc, char* argv[]) {
 
   for (const auto& feature : dataset.features) {
     auto id_it = feature.attributes.find(id_col);
-    out << escapeCSV(id_it != feature.attributes.end() ? id_it->second : "");
+    out << escapeCSV(replaceCommas(id_it != feature.attributes.end() ? id_it->second : "", comma_replacement));
 
     for (const auto& c : attr_cols) {
       auto it = feature.attributes.find(c);
-      out << "," << escapeCSV(it != feature.attributes.end() ? it->second : "");
+      out << "," << escapeCSV(replaceCommas(it != feature.attributes.end() ? it->second : "", comma_replacement));
     }
 
     if (include_type) out << "," << geomTypeToString(feature.type);
