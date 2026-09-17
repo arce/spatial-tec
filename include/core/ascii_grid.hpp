@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
+#include <cstdlib>
 
 namespace Spatial {
 
@@ -44,6 +45,7 @@ public:
         }
 
         size_t total_cells = static_cast<size_t>(dataset.nrows) * static_cast<size_t>(dataset.ncols);
+        dataset.data.reserve(total_cells);
         while (std::getline(file, line)) {
             std::string trimmed = trim(line);
             if (trimmed.empty()) continue;
@@ -95,10 +97,23 @@ private:
     }
 
     void processDataLine(const std::string& line, RasterDataset& dataset) {
-        auto tokens = split(line, ' ');
-        for (const auto& token : tokens) {
-            if (dataset.data.size() < static_cast<size_t>(dataset.nrows * dataset.ncols)) {
-                dataset.data.push_back(std::stod(token));
+        // Fast path: parse numbers directly out of the line buffer with strtod
+        // instead of splitting into a std::vector<std::string> of tokens first.
+        // For large rasters this removes millions of small heap allocations.
+        const size_t total_cells =
+            static_cast<size_t>(dataset.nrows) * static_cast<size_t>(dataset.ncols);
+        const char* p = line.c_str();
+        while (*p != '\0') {
+            while (*p == ' ' || *p == '\t' || *p == '\r') ++p;
+            if (*p == '\0') break;
+            char* endp = nullptr;
+            double val = std::strtod(p, &endp);
+            if (endp == p) break;  // not a valid number, stop parsing this line
+            p = endp;
+            if (dataset.data.size() < total_cells) {
+                dataset.data.push_back(val);
+            } else {
+                break;
             }
         }
     }

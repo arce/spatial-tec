@@ -605,7 +605,7 @@ private:
 
   void drawRasterLayer(const Layer& layer) {
     const auto& ds = layer.raster_data;
-    if (ds.data.empty() || ds.ncols <= 0 || ds.nrows <= 0) return;
+    if (ds.data.empty() || ds.ncols <= 0 || ds.nrows <= 0 || ds.cellsize <= 0.0) return;
 
     double range = ds.max_val - ds.min_val;
     if (range < 1e-12) range = 1.0;
@@ -625,15 +625,56 @@ private:
       }
     }
 
-    for (int r = 0; r < ds.nrows; ++r) {
-      for (int c = 0; c < ds.ncols; ++c) {
+    // --- Viewport culling -------------------------------------------------
+    // Only walk the rows/columns of the raster that actually intersect the
+    // visible widget area, instead of the whole dataset on every redraw.
+    // This is what made panning/zooming large ASC rasters expensive: the
+    // old loop always ran nrows*ncols regardless of zoom level or how much
+    // of the raster was actually on screen.
+    double view_left = std::min(toWorldX(x()), toWorldX(x() + w()));
+    double view_right = std::max(toWorldX(x()), toWorldX(x() + w()));
+    double view_bottom = std::min(toWorldY(y()), toWorldY(y() + h()));
+    double view_top = std::max(toWorldY(y()), toWorldY(y() + h()));
+
+    double col_min_d = std::floor((view_left - ds.xllcorner) / ds.cellsize) - 1.0;
+    double col_max_d = std::ceil((view_right - ds.xllcorner) / ds.cellsize) + 1.0;
+    double row_min_d =
+        std::floor((double)ds.nrows - 1.0 - (view_top - ds.yllcorner) / ds.cellsize) - 1.0;
+    double row_max_d =
+        std::ceil((double)ds.nrows - 1.0 - (view_bottom - ds.yllcorner) / ds.cellsize) + 1.0;
+
+    col_min_d = std::clamp(col_min_d, 0.0, (double)(ds.ncols - 1));
+    col_max_d = std::clamp(col_max_d, 0.0, (double)(ds.ncols - 1));
+    row_min_d = std::clamp(row_min_d, 0.0, (double)(ds.nrows - 1));
+    row_max_d = std::clamp(row_max_d, 0.0, (double)(ds.nrows - 1));
+
+    int col_min = (int)col_min_d;
+    int col_max = (int)col_max_d;
+    int row_min = (int)row_min_d;
+    int row_max = (int)row_max_d;
+    if (col_min > col_max || row_min > row_max) return;
+
+    // --- Level of detail ----------------------------------------------------
+    // When zoomed out far enough that many cells map onto the same screen
+    // pixel, sample on a coarser stride instead of drawing every single
+    // cell (which would issue far more fl_rectf calls than there are
+    // pixels to show).
+    double cell_screen_size = ds.cellsize * scale_x_;
+    int step = 1;
+    if (cell_screen_size > 0.0 && cell_screen_size < 1.0) {
+      step = (int)std::ceil(1.0 / cell_screen_size);
+      if (step < 1) step = 1;
+    }
+
+    for (int r = row_min; r <= row_max; r += step) {
+      for (int c = col_min; c <= col_max; c += step) {
         double val = ds.at(r, c);
         if (std::abs(val - ds.nodata_value) < 1e-9) continue;
 
         double x_left = ds.xllcorner + c * ds.cellsize;
         double y_bottom = ds.yllcorner + (ds.nrows - 1 - r) * ds.cellsize;
-        double x_right = x_left + ds.cellsize;
-        double y_top = y_bottom + ds.cellsize;
+        double x_right = x_left + step * ds.cellsize;
+        double y_top = y_bottom + step * ds.cellsize;
 
         double sx1 = toScreenX(x_left);
         double sy1 = toScreenY(y_top);
@@ -665,7 +706,7 @@ private:
         fl_color(r_col, g_col, b_col);
         fl_rectf((int)sx1, (int)sy1, (int)sw + 1, (int)sh + 1);
 
-        if (layer.show_labels && sw >= 16 && sh >= 12) {
+        if (step == 1 && layer.show_labels && sw >= 16 && sh >= 12) {
           std::string text = rasterCellLabel(ds, layer, val, rat_index);
           drawLabelText((int)sx1, (int)sy1, (int)sw, (int)sh, text, FL_ALIGN_CENTER);
         }

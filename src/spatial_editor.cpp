@@ -13,8 +13,17 @@
 // use; they are pure passthroughs and don't change spatial_viewer's own
 // behavior. See adr/0007-editor-tool.md for the full rationale, including
 // what's deliberately out of scope for this first version (a single
-// editable layer, no background reference layers, whole-feature delete
-// rather than per-vertex insert/remove).
+// editable layer, whole-feature delete rather than per-vertex insert/
+// remove).
+//
+// Read-only raster background: File > Open Raster Background... (or an
+// .asc/.grd passed on the command line) loads an ASCII Grid via the same
+// Spatial::ASCIIGridReader spatial_viewer uses and draws it underneath the
+// editable vector layer so features can be traced over it. It is kept
+// completely separate from edit_layer_ -- never selectable, draggable or
+// saved -- and reuses Viewer::MapWidget's raster rendering as-is, so it
+// gets the same viewport-culled, level-of-detail drawing spatial_viewer
+// uses for large rasters. See adr/0008-editor-raster-background.md.
 //
 // Editing model: a single Viewer::Layer is "the" editable layer at a time
 // (new, or loaded from an existing CSV). Three draw tools add features by
@@ -49,6 +58,7 @@
 #include <FL/fl_ask.H>
 #include <FL/fl_draw.H>
 
+#include "core/ascii_grid.hpp"
 #include "core/spatial_csv.hpp"
 #include "core/spatial_geom.hpp"
 #include "core/spatial_io.hpp"
@@ -495,6 +505,8 @@ class MainWindow : public Fl_Double_Window {
     menu_bar_->add("&File/&Open Layer...", 0, cbOpenLayer, this);
     menu_bar_->add("&File/&Save", 0, cbSaveLayer, this);
     menu_bar_->add("&File/Save &As...", 0, cbSaveLayerAs, this, FL_MENU_DIVIDER);
+    menu_bar_->add("&File/Open &Raster Background...", 0, cbOpenRaster, this);
+    menu_bar_->add("&File/Clear Raster Background", 0, cbClearRaster, this, FL_MENU_DIVIDER);
     // The literal "/" in the label has to be escaped ("\/") so FLTK's menu
     // path parser doesn't read it as a submenu separator.
     menu_bar_->add("&Draw/&Select \\/ Edit", "s", cbModeSelect, this, FL_MENU_RADIO | FL_MENU_VALUE);
@@ -578,7 +590,9 @@ class MainWindow : public Fl_Double_Window {
     btn_update_attrs_->deactivate();
     y += 26 + 14;
 
-    status_label_ = new Fl_Box(px, y, pw, std::max(50, H - y - 10), "Create or open a layer to begin.");
+    status_label_ = new Fl_Box(px, y, pw, std::max(50, H - y - 10),
+                                "Create or open a layer to begin. File > Open Raster Background... "
+                                "loads an ASC/GRD raster to trace over.");
     status_label_->align(FL_ALIGN_LEFT | FL_ALIGN_TOP | FL_ALIGN_INSIDE | FL_ALIGN_WRAP);
     status_label_->box(FL_BORDER_BOX);
 
@@ -589,12 +603,32 @@ class MainWindow : public Fl_Double_Window {
     Fl::focus(canvas_);
   }
 
+  // Mirrors spatial_viewer's argv handling: a .csv/.tsv on the command line
+  // becomes the editable layer, an .asc/.grd becomes the (read-only) raster
+  // background -- either can be added afterwards from the other kind via
+  // File > Open Layer... / File > Open Raster Background....
+  void loadFileFromArgs(const std::string& filename) {
+    std::string ext = std::filesystem::path(filename).extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    if (ext == ".asc" || ext == ".grd") {
+      current_directory_ = std::filesystem::path(filename).parent_path().string();
+      openRasterBackgroundFromPath(filename);
+    } else if (ext == ".csv" || ext == ".tsv") {
+      current_directory_ = std::filesystem::path(filename).parent_path().string();
+      openVectorLayerFromPath(filename);
+    } else {
+      fl_alert("Unsupported format: %s", ext.c_str());
+    }
+  }
+
  private:
   // ---- static callbacks ----
   static void cbNewLayer(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->newLayer(); }
   static void cbOpenLayer(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->openLayer(); }
   static void cbSaveLayer(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->saveLayer(); }
   static void cbSaveLayerAs(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->saveLayerAs(); }
+  static void cbOpenRaster(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->openRasterBackground(); }
+  static void cbClearRaster(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->clearRasterBackground(); }
 
   static void cbModeSelect(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->setMode(DrawMode::SELECT); }
   static void cbModePoint(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->setMode(DrawMode::POINT); }
@@ -647,12 +681,21 @@ class MainWindow : public Fl_Double_Window {
     return cols;
   }
 
-  void bindLayer(std::shared_ptr<Viewer::Layer> layer) {
+  // Rebuilds the widget's layer list from the current background raster (if
+  // any) plus the single editable vector layer (if any) and hands it to the
+  // canvas. Kept separate from bindLayer() so loading/clearing the raster
+  // background never disturbs the editable layer, and vice versa.
+  void rebuildLayers() {
     layers_.clear();
-    layers_.push_back(layer);
+    if (background_raster_) layers_.push_back(background_raster_);
+    if (edit_layer_) layers_.push_back(edit_layer_);
+    canvas_->setLayers(&layers_);
+  }
+
+  void bindLayer(std::shared_ptr<Viewer::Layer> layer) {
     edit_layer_ = layer;
     canvas_->setEditLayer(edit_layer_.get());
-    canvas_->setLayers(&layers_);
+    rebuildLayers();
     dirty_ = false;
     refreshColumnList();
     refreshFeatureList();
@@ -698,7 +741,12 @@ class MainWindow : public Fl_Double_Window {
     if (chooser.count() <= 0 || !chooser.value()) return;
     std::string filename = chooser.value();
     current_directory_ = std::filesystem::path(filename).parent_path().string();
+    openVectorLayerFromPath(filename);
+  }
 
+  // Reads a CSV/WKT vector file and makes it "the" editable layer. Shared by
+  // openLayer() (file chooser) and loadFileFromArgs() (command-line arg).
+  void openVectorLayerFromPath(const std::string& filename) {
     auto layer = std::make_shared<Viewer::Layer>();
     layer->type = Viewer::LayerType::VECTOR;
     layer->filename = filename;
@@ -721,6 +769,54 @@ class MainWindow : public Fl_Double_Window {
     bindLayer(layer);
     updateStatus("Loaded: " + filename + "  (" + std::to_string(layer->vector_data.features.size()) +
                  " features).");
+  }
+
+  void openRasterBackground() {
+    Fl_File_Chooser chooser(current_directory_.c_str(), "ASCII Grid files (*.asc,*.grd)",
+                             Fl_File_Chooser::SINGLE, "Open raster background");
+    chooser.show();
+    while (chooser.shown()) Fl::wait();
+    if (chooser.count() <= 0 || !chooser.value()) return;
+    std::string filename = chooser.value();
+    current_directory_ = std::filesystem::path(filename).parent_path().string();
+    openRasterBackgroundFromPath(filename);
+  }
+
+  // Reads an ASCII Grid (.asc/.grd) raster as a read-only backdrop to trace
+  // over. It is never edit_layer_: EditorMapWidget's hit-testing and drawing
+  // tools only ever look at edit_layer_, so the raster just sits underneath
+  // (MapWidget::draw() always draws RASTER layers before VECTOR ones) and is
+  // otherwise inert -- not selectable, not draggable, not written back out.
+  // It reuses the same Spatial::ASCIIGridReader and Viewer::MapWidget raster
+  // rendering spatial_viewer uses, so large rasters load and pan/zoom here
+  // just as efficiently as they do there. Shared by openRasterBackground()
+  // (file chooser) and loadFileFromArgs() (command-line arg).
+  void openRasterBackgroundFromPath(const std::string& filename) {
+    auto layer = std::make_shared<Viewer::Layer>();
+    layer->type = Viewer::LayerType::RASTER;
+    layer->filename = filename;
+    layer->name = std::filesystem::path(filename).stem().string();
+    layer->color = FL_RED;
+    layer->fill = true;
+    layer->opacity = 0.6;
+
+    Spatial::ASCIIGridReader reader;
+    if (!reader.read(filename, layer->raster_data)) {
+      fl_alert("Could not read ASCII raster file: %s", filename.c_str());
+      return;
+    }
+
+    background_raster_ = layer;
+    rebuildLayers();
+    updateStatus("Background raster: " + filename + "  (" + std::to_string(layer->raster_data.ncols) +
+                 " x " + std::to_string(layer->raster_data.nrows) + " cells).");
+  }
+
+  void clearRasterBackground() {
+    if (!background_raster_) return;
+    background_raster_.reset();
+    rebuildLayers();
+    updateStatus("Background raster cleared.");
   }
 
   void saveLayerToPath(const std::string& filename) {
@@ -893,6 +989,7 @@ class MainWindow : public Fl_Double_Window {
 
   std::vector<std::shared_ptr<Viewer::Layer>> layers_;
   std::shared_ptr<Viewer::Layer> edit_layer_;
+  std::shared_ptr<Viewer::Layer> background_raster_;
   std::string current_filename_;
   std::string current_directory_ = ".";
   bool dirty_ = false;
@@ -904,11 +1001,7 @@ int main(int argc, char** argv) {
   Fl::scheme("gtk+");
   Editor::MainWindow win(1200, 820, "Spatial Editor - Spatial TEC");
 
-  if (argc > 1) {
-    // Placeholder for symmetry with the other tools' argv handling; opening
-    // a file still goes through File > Open Layer... today.
-    (void)argv;
-  }
+  if (argc > 1) win.loadFileFromArgs(argv[1]);
 
   return Fl::run();
 }
