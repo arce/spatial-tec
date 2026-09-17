@@ -850,7 +850,7 @@ class MainWindow : public Fl_Double_Window {
 
   // ---- actions ----
   void onLoad() {
-    Fl_File_Chooser chooser(current_directory_.c_str(), "Images (*.png,*.jpg,*.jpeg)", Fl_File_Chooser::SINGLE,
+    Fl_File_Chooser chooser(current_directory_.c_str(), "Images (*.{png,jpg,jpeg})", Fl_File_Chooser::SINGLE,
                              "Load image");
     chooser.show();
     while (chooser.shown()) Fl::wait();

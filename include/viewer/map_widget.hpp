@@ -12,6 +12,7 @@
 
 #include <FL/Fl.H>
 #include <FL/Fl_Box.H>
+#include <FL/Fl_Image.H>
 #include <FL/fl_draw.H>
 
 #include "core/spatial_geom.hpp"
@@ -33,6 +34,15 @@ inline void valueToColor(double t, uchar& r, uchar& g, uchar& b) {
     g = (uchar)(255 * (1.0 - tt));
     b = 0;
   }
+}
+
+inline bool sameStyleRules(const std::vector<Spatial::StyleRule>& a,
+                           const std::vector<Spatial::StyleRule>& b) {
+  if (a.size() != b.size()) return false;
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (a[i].min_val != b[i].min_val || a[i].max_val != b[i].max_val || a[i].color != b[i].color) return false;
+  }
+  return true;
 }
 
 inline bool parseHexColor(const std::string& s, uchar& r, uchar& g, uchar& b) {
@@ -625,88 +635,159 @@ private:
       }
     }
 
-    // --- Viewport culling -------------------------------------------------
-    // Only walk the rows/columns of the raster that actually intersect the
-    // visible widget area, instead of the whole dataset on every redraw.
-    // This is what made panning/zooming large ASC rasters expensive: the
-    // old loop always ran nrows*ncols regardless of zoom level or how much
-    // of the raster was actually on screen.
-    double view_left = std::min(toWorldX(x()), toWorldX(x() + w()));
-    double view_right = std::max(toWorldX(x()), toWorldX(x() + w()));
-    double view_bottom = std::min(toWorldY(y()), toWorldY(y() + h()));
-    double view_top = std::max(toWorldY(y()), toWorldY(y() + h()));
+    // --- Destination rectangle ---------------------------------------
+    // The part of the widget the raster actually covers, clamped to the
+    // widget itself. IMPORTANT: Fl_Image::draw(X,Y,W,H) does NOT scale the
+    // image to fit W,H -- per FLTK's own docs it clips to that box and
+    // draws the image at its *own* width/height. A bitmap built at raster-
+    // cell resolution and handed a differently-sized screen rectangle (the
+    // previous version of this function) therefore came out the wrong
+    // size/position at any zoom level other than exactly 1 screen pixel
+    // per cell -- worse the further you zoomed, which is the bug just
+    // reported. The fix: render directly at *screen* resolution, one
+    // sample per destination pixel, looked up in the raster via the
+    // inverse view transform (nearest-neighbor) -- so the bitmap's native
+    // size always equals the box it's drawn into, and draw() never needs
+    // to scale anything.
+    double ds_left = ds.xllcorner;
+    double ds_right = ds.xllcorner + ds.ncols * ds.cellsize;
+    double ds_bottom = ds.yllcorner;
+    double ds_top = ds.yllcorner + ds.nrows * ds.cellsize;
 
-    double col_min_d = std::floor((view_left - ds.xllcorner) / ds.cellsize) - 1.0;
-    double col_max_d = std::ceil((view_right - ds.xllcorner) / ds.cellsize) + 1.0;
-    double row_min_d =
-        std::floor((double)ds.nrows - 1.0 - (view_top - ds.yllcorner) / ds.cellsize) - 1.0;
-    double row_max_d =
-        std::ceil((double)ds.nrows - 1.0 - (view_bottom - ds.yllcorner) / ds.cellsize) + 1.0;
+    double sx_a = toScreenX(ds_left), sx_b = toScreenX(ds_right);
+    double sy_a = toScreenY(ds_top), sy_b = toScreenY(ds_bottom);
 
-    col_min_d = std::clamp(col_min_d, 0.0, (double)(ds.ncols - 1));
-    col_max_d = std::clamp(col_max_d, 0.0, (double)(ds.ncols - 1));
-    row_min_d = std::clamp(row_min_d, 0.0, (double)(ds.nrows - 1));
-    row_max_d = std::clamp(row_max_d, 0.0, (double)(ds.nrows - 1));
+    int screen_x1 = std::max(x(), (int)std::floor(std::min(sx_a, sx_b)));
+    int screen_x2 = std::min(x() + w(), (int)std::ceil(std::max(sx_a, sx_b)));
+    int screen_y1 = std::max(y(), (int)std::floor(std::min(sy_a, sy_b)));
+    int screen_y2 = std::min(y() + h(), (int)std::ceil(std::max(sy_a, sy_b)));
 
-    int col_min = (int)col_min_d;
-    int col_max = (int)col_max_d;
-    int row_min = (int)row_min_d;
-    int row_max = (int)row_max_d;
-    if (col_min > col_max || row_min > row_max) return;
+    int dest_w = screen_x2 - screen_x1;
+    int dest_h = screen_y2 - screen_y1;
+    if (dest_w <= 0 || dest_h <= 0) return;
 
-    // --- Level of detail ----------------------------------------------------
-    // When zoomed out far enough that many cells map onto the same screen
-    // pixel, sample on a coarser stride instead of drawing every single
-    // cell (which would issue far more fl_rectf calls than there are
-    // pixels to show).
-    double cell_screen_size = ds.cellsize * scale_x_;
-    int step = 1;
-    if (cell_screen_size > 0.0 && cell_screen_size < 1.0) {
-      step = (int)std::ceil(1.0 / cell_screen_size);
-      if (step < 1) step = 1;
+    // --- Bitmap cache -------------------------------------------------
+    // Used to mean one fl_rectf() call per visible cell -- for a widget
+    // full of raster at native resolution that is on the order of
+    // widget_width * widget_height individual draw calls on *every*
+    // redraw, and something as unrelated as dragging a vector vertex in
+    // spatial_editor calls redraw() on every mouse-move. Colors are now
+    // written into an RGBA buffer sized to the destination screen
+    // rectangle (cheap memory writes, no FLTK call overhead) and blitted
+    // once as a single Fl_RGB_Image at its native size; the buffer is
+    // cached on the layer itself and only rebuilt when the view (pan/zoom/
+    // resize) or the raster's style actually changed since the last
+    // redraw.
+    auto& cache = layer.raster_cache;
+    bool cache_ok = cache.valid && cache.pixel_w == dest_w && cache.pixel_h == dest_h &&
+                    cache.scale_x == scale_x_ && cache.offset_x == offset_x_ &&
+                    cache.offset_y == offset_y_ && cache.widget_x == x() && cache.widget_y == y() &&
+                    cache.widget_w == w() && cache.widget_h == h() &&
+                    cache.use_rat_color == use_rat_color &&
+                    cache.rat_color_field == layer.rat_color_field &&
+                    sameStyleRules(cache.style_rules, layer.style_rules);
+
+    if (!cache_ok) {
+      cache.rgba.assign((size_t)dest_w * dest_h * 4, 0);
+      for (int py = 0; py < dest_h; ++py) {
+        double wy = toWorldY(screen_y1 + py);
+        // Inverse of: y_bottom(row) = yllcorner + (nrows-1-row)*cellsize.
+        // NOTE: must floor the cell-units distance *before* subtracting
+        // from (nrows-1), not the other way around (floor(a-b) != a -
+        // floor(b) in general) -- getting this order wrong is exactly what
+        // caused the misalignment.
+        int row = (ds.nrows - 1) - (int)std::floor((wy - ds.yllcorner) / ds.cellsize);
+        if (row < 0 || row >= ds.nrows) continue;
+
+        for (int px = 0; px < dest_w; ++px) {
+          double wx = toWorldX(screen_x1 + px);
+          int col = (int)std::floor((wx - ds.xllcorner) / ds.cellsize);
+          if (col < 0 || col >= ds.ncols) continue;
+
+          double val = ds.at(row, col);
+          if (std::abs(val - ds.nodata_value) < 1e-9) continue;  // alpha stays 0: transparent
+
+          uchar r_col, g_col, b_col;
+          bool colored = false;
+          if (!layer.style_rules.empty()) {
+            for (const auto& rule : layer.style_rules) {
+              if (val >= rule.min_val && val <= rule.max_val) {
+                colored = parseHexColor(rule.color, r_col, g_col, b_col);
+                break;
+              }
+            }
+          }
+          if (!colored && use_rat_color) {
+            auto idx_it = rat_index.find(val);
+            if (idx_it != rat_index.end()) {
+              auto col_it = ds.rat_rows[idx_it->second].find(layer.rat_color_field);
+              if (col_it != ds.rat_rows[idx_it->second].end()) {
+                colored = parseHexColor(col_it->second, r_col, g_col, b_col);
+              }
+            }
+          }
+          if (!colored) {
+            valueToColor((val - ds.min_val) / range, r_col, g_col, b_col);
+          }
+          size_t idx = ((size_t)py * dest_w + px) * 4;
+          cache.rgba[idx + 0] = r_col;
+          cache.rgba[idx + 1] = g_col;
+          cache.rgba[idx + 2] = b_col;
+          cache.rgba[idx + 3] = 255;
+        }
+      }
+
+      cache.pixel_w = dest_w;
+      cache.pixel_h = dest_h;
+      cache.scale_x = scale_x_;
+      cache.offset_x = offset_x_;
+      cache.offset_y = offset_y_;
+      cache.widget_x = x();
+      cache.widget_y = y();
+      cache.widget_w = w();
+      cache.widget_h = h();
+      cache.use_rat_color = use_rat_color;
+      cache.rat_color_field = layer.rat_color_field;
+      cache.style_rules = layer.style_rules;
+      cache.valid = true;
     }
 
-    for (int r = row_min; r <= row_max; r += step) {
-      for (int c = col_min; c <= col_max; c += step) {
-        double val = ds.at(r, c);
-        if (std::abs(val - ds.nodata_value) < 1e-9) continue;
+    Fl_RGB_Image img(cache.rgba.data(), dest_w, dest_h, 4);
+    img.draw(screen_x1, screen_y1, dest_w, dest_h);
 
-        double x_left = ds.xllcorner + c * ds.cellsize;
-        double y_bottom = ds.yllcorner + (ds.nrows - 1 - r) * ds.cellsize;
-        double x_right = x_left + step * ds.cellsize;
-        double y_top = y_bottom + step * ds.cellsize;
+    // Per-cell value labels are only shown once cells are large enough on
+    // screen to matter, using the same viewport-cell math as before this
+    // change -- kept local to this block since the color fill above no
+    // longer iterates raster cells at all.
+    if (layer.show_labels && ds.cellsize * scale_x_ >= 12.0) {
+      double view_left = std::min(toWorldX(x()), toWorldX(x() + w()));
+      double view_right = std::max(toWorldX(x()), toWorldX(x() + w()));
+      double view_bottom = std::min(toWorldY(y()), toWorldY(y() + h()));
+      double view_top = std::max(toWorldY(y()), toWorldY(y() + h()));
 
-        double sx1 = toScreenX(x_left);
-        double sy1 = toScreenY(y_top);
-        double sw = std::max(1.0, toScreenX(x_right) - sx1);
-        double sh = std::max(1.0, toScreenY(y_bottom) - sy1);
+      int col_min = std::clamp((int)std::floor((view_left - ds.xllcorner) / ds.cellsize) - 1, 0,
+                                ds.ncols - 1);
+      int col_max = std::clamp((int)std::ceil((view_right - ds.xllcorner) / ds.cellsize) + 1, 0,
+                                ds.ncols - 1);
+      int row_min = std::clamp(
+          (ds.nrows - 1) - (int)std::ceil((view_top - ds.yllcorner) / ds.cellsize) - 1, 0, ds.nrows - 1);
+      int row_max = std::clamp(
+          (ds.nrows - 1) - (int)std::floor((view_bottom - ds.yllcorner) / ds.cellsize) + 1, 0,
+          ds.nrows - 1);
 
-        uchar r_col, g_col, b_col;
-        bool colored = false;
-        if (!layer.style_rules.empty()) {
-          for (const auto& rule : layer.style_rules) {
-            if (val >= rule.min_val && val <= rule.max_val) {
-              colored = parseHexColor(rule.color, r_col, g_col, b_col);
-              break;
-            }
-          }
-        }
-        if (!colored && use_rat_color) {
-          auto idx_it = rat_index.find(val);
-          if (idx_it != rat_index.end()) {
-            auto col_it = ds.rat_rows[idx_it->second].find(layer.rat_color_field);
-            if (col_it != ds.rat_rows[idx_it->second].end()) {
-              colored = parseHexColor(col_it->second, r_col, g_col, b_col);
-            }
-          }
-        }
-        if (!colored) {
-          valueToColor((val - ds.min_val) / range, r_col, g_col, b_col);
-        }
-        fl_color(r_col, g_col, b_col);
-        fl_rectf((int)sx1, (int)sy1, (int)sw + 1, (int)sh + 1);
+      for (int r = row_min; r <= row_max; ++r) {
+        for (int c = col_min; c <= col_max; ++c) {
+          double val = ds.at(r, c);
+          if (std::abs(val - ds.nodata_value) < 1e-9) continue;
 
-        if (step == 1 && layer.show_labels && sw >= 16 && sh >= 12) {
+          double x_left = ds.xllcorner + c * ds.cellsize;
+          double y_bottom = ds.yllcorner + (ds.nrows - 1 - r) * ds.cellsize;
+          double sx1 = toScreenX(x_left);
+          double sy1 = toScreenY(y_bottom + ds.cellsize);
+          double sw = std::max(1.0, toScreenX(x_left + ds.cellsize) - sx1);
+          double sh = std::max(1.0, toScreenY(y_bottom) - sy1);
+          if (sw < 16 || sh < 12) continue;
+
           std::string text = rasterCellLabel(ds, layer, val, rat_index);
           drawLabelText((int)sx1, (int)sy1, (int)sw, (int)sh, text, FL_ALIGN_CENTER);
         }

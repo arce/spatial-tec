@@ -456,7 +456,7 @@ private:
   static void cbMenuOpen(Fl_Widget*, void* d) {
     MainWindow* win = static_cast<MainWindow*>(d);
 
-    Fl_File_Chooser chooser(win->current_directory_.c_str(), "Spatial files (*.csv,*.asc,*.grd)",
+    Fl_File_Chooser chooser(win->current_directory_.c_str(), "Spatial files (*.{csv,asc,grd})",
                              Fl_File_Chooser::SINGLE, "Open layer");
     chooser.show();
     while (chooser.shown()) Fl::wait();

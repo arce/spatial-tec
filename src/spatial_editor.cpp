@@ -49,6 +49,7 @@
 #include <FL/Fl.H>
 #include <FL/Fl_Box.H>
 #include <FL/Fl_Button.H>
+#include <FL/Fl_Color_Chooser.H>
 #include <FL/Fl_Double_Window.H>
 #include <FL/Fl_File_Chooser.H>
 #include <FL/Fl_Hold_Browser.H>
@@ -515,6 +516,7 @@ class MainWindow : public Fl_Double_Window {
     menu_bar_->add("&Draw/Poly&gon", "g", cbModePolygon, this, FL_MENU_RADIO | FL_MENU_DIVIDER);
     menu_bar_->add("&Draw/&Finish shape", 0, cbFinishShape, this);
     menu_bar_->add("&Draw/&Cancel shape", 0, cbCancelShape, this);
+    menu_bar_->add("&Layer/&Style...", 0, cbLayerStyle, this);
 
     canvas_ = new EditorMapWidget(10, 10 + mb_h, W - 300, H - 20 - mb_h);
     canvas_->setOnChange([this] { onEditorChange(); });
@@ -629,6 +631,7 @@ class MainWindow : public Fl_Double_Window {
   static void cbSaveLayerAs(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->saveLayerAs(); }
   static void cbOpenRaster(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->openRasterBackground(); }
   static void cbClearRaster(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->clearRasterBackground(); }
+  static void cbLayerStyle(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->editLayerStyle(); }
 
   static void cbModeSelect(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->setMode(DrawMode::SELECT); }
   static void cbModePoint(Fl_Widget*, void* d) { static_cast<MainWindow*>(d)->setMode(DrawMode::POINT); }
@@ -657,6 +660,7 @@ class MainWindow : public Fl_Double_Window {
 
   // ---- actions ----
   void setMode(DrawMode m) {
+    if (m != DrawMode::SELECT) ensureEditableLayer();
     canvas_->setMode(m);
     canvas_->redraw();
     switch (m) {
@@ -665,6 +669,97 @@ class MainWindow : public Fl_Double_Window {
       case DrawMode::LINE: mode_label_->label("Mode: Line"); break;
       case DrawMode::POLYGON: mode_label_->label("Mode: Polygon"); break;
     }
+  }
+
+  // Silently creates a default editable layer (one "name" attribute column)
+  // if there isn't one yet, so a Draw tool always has somewhere to put a new
+  // feature. Without this, loading only a raster background (no New/Open
+  // Layer first) left edit_layer_ null and clicking on the map with Point/
+  // Line/Polygon selected did nothing, since EditorMapWidget::handle() only
+  // acts on those tools when edit_layer_ is set.
+  void ensureEditableLayer() {
+    if (edit_layer_) return;
+    auto layer = std::make_shared<Viewer::Layer>();
+    layer->type = Viewer::LayerType::VECTOR;
+    layer->name = "untitled";
+    layer->color = FL_BLUE;
+    layer->fill_color = FL_BLUE;
+    layer->vector_data.columns = {"name", "geometry"};
+    layer->vector_data.geometry_column = "geometry";
+    current_filename_.clear();
+    bindLayer(layer);
+  }
+
+  // Border/fill color picker for the editable vector layer, matching what
+  // spatial_viewer's "Edit Layer" dialog offers for a vector layer
+  // (editVectorLayerAt() in include/viewer/main_window.hpp). Like there,
+  // this only changes how the layer looks for the rest of this session --
+  // color isn't part of the CSV/WKT format this tool saves, so it isn't
+  // persisted (spatial_viewer's own color picker doesn't write a .sty
+  // sidecar either).
+  void editLayerStyle() {
+    if (!edit_layer_) {
+      fl_alert("Create or open a layer first.");
+      return;
+    }
+    auto& layer = edit_layer_;
+
+    const int dlg_w = 380, dlg_h = 300;
+    const int pad = 15;
+
+    Fl_Double_Window dialog(dlg_w, dlg_h, "Layer Style");
+    dialog.color(FL_BACKGROUND2_COLOR);
+
+    int chooser_w = (dlg_w - 2 * pad - 20) / 2;
+    int chooser_h = 190;
+    int colors_y = pad + 10;
+
+    Fl_Box border_label(pad, colors_y, chooser_w, 18, "Border color");
+    border_label.labelfont(FL_BOLD);
+    border_label.labelsize(12);
+    border_label.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+    Fl_Color_Chooser border(pad, colors_y + 22, chooser_w, chooser_h);
+
+    Fl_Box fill_label(pad + chooser_w + 20, colors_y, chooser_w, 18, "Fill color");
+    fill_label.labelfont(FL_BOLD);
+    fill_label.labelsize(12);
+    fill_label.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+    Fl_Color_Chooser fill(pad + chooser_w + 20, colors_y + 22, chooser_w, chooser_h);
+
+    uchar r, g, b;
+    Fl::get_color(layer->color, r, g, b);
+    border.rgb(r / 255.0, g / 255.0, b / 255.0);
+    Fl::get_color(layer->fill_color, r, g, b);
+    fill.rgb(r / 255.0, g / 255.0, b / 255.0);
+
+    int fill_check_y = colors_y + 22 + chooser_h + 12;
+    Fl_Check_Button fill_check(pad, fill_check_y, 260, 24, "Fill polygons / points");
+    fill_check.value(layer->fill ? 1 : 0);
+
+    int btn_y = dlg_h - pad - 30;
+    Fl_Button cancel(dlg_w - pad - 190, btn_y, 90, 30, "Cancel");
+    Fl_Return_Button ok(dlg_w - pad - 90, btn_y, 90, 30, "OK");
+
+    bool accepted = false;
+    ok.callback([](Fl_Widget*, void* data) {
+      *static_cast<bool*>(data) = true;
+      Fl::first_window()->hide();
+    }, &accepted);
+    cancel.callback([](Fl_Widget*, void*) { Fl::first_window()->hide(); });
+
+    dialog.set_modal();
+    dialog.end();
+    dialog.show();
+    while (dialog.shown()) Fl::wait();
+    if (!accepted) return;
+
+    layer->color = fl_rgb_color((uchar)(border.r() * 255), (uchar)(border.g() * 255),
+                                (uchar)(border.b() * 255));
+    layer->fill_color = fl_rgb_color((uchar)(fill.r() * 255), (uchar)(fill.g() * 255),
+                                     (uchar)(fill.b() * 255));
+    layer->fill = fill_check.value() != 0;
+
+    canvas_->redraw();
   }
 
   bool confirmDiscard() {
@@ -772,7 +867,7 @@ class MainWindow : public Fl_Double_Window {
   }
 
   void openRasterBackground() {
-    Fl_File_Chooser chooser(current_directory_.c_str(), "ASCII Grid files (*.asc,*.grd)",
+    Fl_File_Chooser chooser(current_directory_.c_str(), "ASCII Grid files (*.{asc,grd})",
                              Fl_File_Chooser::SINGLE, "Open raster background");
     chooser.show();
     while (chooser.shown()) Fl::wait();
@@ -807,9 +902,13 @@ class MainWindow : public Fl_Double_Window {
     }
 
     background_raster_ = layer;
-    rebuildLayers();
+    if (edit_layer_) {
+      rebuildLayers();
+    } else {
+      ensureEditableLayer();  // also calls rebuildLayers() via bindLayer()
+    }
     updateStatus("Background raster: " + filename + "  (" + std::to_string(layer->raster_data.ncols) +
-                 " x " + std::to_string(layer->raster_data.nrows) + " cells).");
+                 " x " + std::to_string(layer->raster_data.nrows) + " cells) -- pick a Draw tool to trace over it.");
   }
 
   void clearRasterBackground() {
