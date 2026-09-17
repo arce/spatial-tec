@@ -181,7 +181,7 @@ STUB_PROGRAMS := \
     spatial_address_validate \
     spatial_reverse_geocode
 CONSOLE_PROGRAMS += $(STUB_PROGRAMS)
-ALL_PROGRAMS := $(CONSOLE_PROGRAMS) spatial_viewer
+ALL_PROGRAMS := $(CONSOLE_PROGRAMS) spatial_viewer spatial_georeference spatial_editor
 .PHONY: all clean windows linux mac macArm macIntel help $(ALL_PROGRAMS)
 all: $(ALL_PROGRAMS)
 # Re-invokes this same Makefile with PLATFORM forced, so `make windows` (or
@@ -293,6 +293,19 @@ $(BUILD_DIR)/%.exe: src/%.cpp $(CORE_HEADERS) | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $< -o $@ $(CONSOLE_LDFLAGS)
 $(BUILD_DIR)/spatial_viewer.exe: src/spatial_viewer.cpp $(CORE_HEADERS) $(VIEWER_HEADERS) | $(BUILD_DIR)
 	$(CXX) $(VIEWER_CXXFLAGS) $< -o $@ $(VIEWER_LDFLAGS)
+# spatial_georeference: GCP-based image georeferencer (zoom/pan, mark control
+# points, export .asc) -- a second, independent FLTK GUI tool, built with the
+# exact same FLTK_CXXFLAGS/FLTK_LDFLAGS as spatial_viewer above. Single
+# self-contained .cpp (no include/georeference/*.hpp split), so it only
+# depends on CORE_HEADERS, not VIEWER_HEADERS.
+$(BUILD_DIR)/spatial_georeference.exe: src/spatial_georeference.cpp $(CORE_HEADERS) | $(BUILD_DIR)
+	$(CXX) $(VIEWER_CXXFLAGS) $< -o $@ $(VIEWER_LDFLAGS)
+# spatial_editor: point/line/polygon digitizer, reuses Viewer::MapWidget/
+# Layer (include/viewer/*.hpp) for rendering and pan/zoom, so -- unlike
+# spatial_georeference -- it depends on VIEWER_HEADERS too, same as
+# spatial_viewer.
+$(BUILD_DIR)/spatial_editor.exe: src/spatial_editor.cpp $(CORE_HEADERS) $(VIEWER_HEADERS) | $(BUILD_DIR)
+	$(CXX) $(VIEWER_CXXFLAGS) $< -o $@ $(VIEWER_LDFLAGS)
 else
 # =====================================================================
 # LINUX / MAC -- native builds. FLTK's GUI backend (X11/Wayland on Linux,
@@ -357,12 +370,22 @@ $(BUILD_DIR)/%: src/%.cpp $(CORE_HEADERS) | $(BUILD_DIR)
 	$(CXX) $(CXXFLAGS) $< -o $@
 $(BUILD_DIR)/spatial_viewer: src/spatial_viewer.cpp $(CORE_HEADERS) $(VIEWER_HEADERS) | $(BUILD_DIR)
 	$(CXX) $(VIEWER_CXXFLAGS) $< -o $@ $(VIEWER_LDFLAGS)
+# spatial_georeference: same FLTK flags as spatial_viewer, single .cpp so
+# only CORE_HEADERS (not VIEWER_HEADERS) is a prerequisite.
+$(BUILD_DIR)/spatial_georeference: src/spatial_georeference.cpp $(CORE_HEADERS) | $(BUILD_DIR)
+	$(CXX) $(VIEWER_CXXFLAGS) $< -o $@ $(VIEWER_LDFLAGS)
+# spatial_editor: same FLTK flags as spatial_viewer; depends on
+# VIEWER_HEADERS too since it reuses Viewer::MapWidget/Layer.
+$(BUILD_DIR)/spatial_editor: src/spatial_editor.cpp $(CORE_HEADERS) $(VIEWER_HEADERS) | $(BUILD_DIR)
+	$(CXX) $(VIEWER_CXXFLAGS) $< -o $@ $(VIEWER_LDFLAGS)
 endif
 # Thin wrappers so `make spatial_info`, `make spatial_viewer`, etc. work
 # directly (matching the per-program targets the project had before build/
 # existed), on top of the real file-based rules above.
 $(CONSOLE_PROGRAMS): %: $(BUILD_DIR)/%$(EXE_EXT)
 spatial_viewer: $(BUILD_DIR)/spatial_viewer$(EXE_EXT)
+spatial_georeference: $(BUILD_DIR)/spatial_georeference$(EXE_EXT)
+spatial_editor: $(BUILD_DIR)/spatial_editor$(EXE_EXT)
 clean:
 	rm -rf $(BUILD_DIR) output_*.csv output_*.asc
 help:
@@ -399,6 +422,8 @@ help:
 	@echo "  spatial_network          - Build network from street lines"
 	@echo "  spatial_shortest_path    - Find shortest path between two nodes"
 	@echo "  spatial_viewer           - Interactive graphical layer viewer"
+	@echo "  spatial_georeference     - Georeference a PNG/JPEG image into a .asc raster via control points"
+	@echo "  spatial_editor           - Create and edit point/line/polygon features, save as spatial CSV"
 	@echo "  spatial_calc_vector      - Compute vector attribute columns via an expression"
 	@echo "  spatial_reclass          - Reclassify raster values via a lookup table"
 	@echo "  spatial_rat              - Export/import a raster attribute table: -mode export|import"

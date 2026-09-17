@@ -7,6 +7,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 #include "../include/core/ascii_grid.hpp"
@@ -158,36 +159,179 @@ int main(int argc, char* argv[]) {
     std::cout << "Points extracted: " << processed << "\n";
 
   } else if (mode == "polygonize") {
-    std::cout << "Polygonizing (simplified)...\n";
-    std::cout << "Note: Full polygonization requires complex algorithms.\n";
-    std::cout << "      This is a simplified version for demonstration.\n\n";
+    std::cout << "Polygonizing...\n";
+    std::cout << "Merging contiguous cells that share the same value into single polygons.\n\n";
 
-    int processed = 0;
+    output.columns.push_back("cell_count");
 
-    for (int r = 0; r < dataset.nrows; ++r) {
-      for (int c = 0; c < dataset.ncols; ++c) {
+    int nrows = dataset.nrows;
+    int ncols = dataset.ncols;
+
+    auto isActive = [&](int r, int c) -> bool {
+      if (r < 0 || r >= nrows || c < 0 || c >= ncols) return false;
+      double v = dataset.at(r, c);
+      if (std::abs(v - dataset.nodata_value) < 1e-9) return false;
+      if (use_filter && std::abs(v - filter_value) > 1e-9) return false;
+      return true;
+    };
+
+    auto sameValue = [](double a, double b) { return std::abs(a - b) < 1e-9; };
+
+    // --- Step 1: connected-component labeling (4-connectivity, equal value) ---
+    std::vector<int> region_id(static_cast<size_t>(nrows) * static_cast<size_t>(ncols), -1);
+    std::vector<double> region_value;
+    std::vector<long long> region_cell_count;
+
+    const int dr[4] = {-1, 1, 0, 0};
+    const int dc[4] = {0, 0, -1, 1};
+
+    for (int r = 0; r < nrows; ++r) {
+      for (int c = 0; c < ncols; ++c) {
+        size_t idx = static_cast<size_t>(r) * ncols + c;
+        if (region_id[idx] != -1 || !isActive(r, c)) continue;
+
         double val = dataset.at(r, c);
-        if (std::abs(val - dataset.nodata_value) < 1e-9)
-          continue;
-        if (use_filter && std::abs(val - filter_value) > 1e-9)
-          continue;
+        int rid = static_cast<int>(region_value.size());
+        region_value.push_back(val);
+        region_cell_count.push_back(0);
 
-        double x = dataset.xllcorner + c * dataset.cellsize;
-        double y = dataset.yllcorner + (dataset.nrows - 1 - r) * dataset.cellsize;
-        double cs = dataset.cellsize;
+        std::vector<std::pair<int, int>> stack;
+        stack.push_back({r, c});
+        region_id[idx] = rid;
 
-        Spatial::VectorFeature feature;
-        feature.type = Spatial::VectorFeature::GeometryType::POLYGON;
-        feature.coordinates = {x, y, x + cs, y, x + cs, y + cs, x, y + cs, x, y};
-        feature.attributes["id"] = std::to_string(++feature_id);
-        feature.attributes["value"] = std::to_string(val);
-        output.features.push_back(feature);
-        processed++;
+        while (!stack.empty()) {
+          auto cell = stack.back();
+          stack.pop_back();
+          region_cell_count[rid]++;
+
+          for (int k = 0; k < 4; ++k) {
+            int nr = cell.first + dr[k];
+            int nc = cell.second + dc[k];
+            if (!isActive(nr, nc)) continue;
+            size_t nidx = static_cast<size_t>(nr) * ncols + nc;
+            if (region_id[nidx] != -1) continue;
+            if (!sameValue(dataset.at(nr, nc), val)) continue;
+            region_id[nidx] = rid;
+            stack.push_back({nr, nc});
+          }
+        }
       }
     }
 
+    int num_regions = static_cast<int>(region_value.size());
+    std::cout << "Connected regions found: " << num_regions << "\n";
+
+    // --- Step 2: boundary tracing for each region ---
+    // Grid corner nodes: node(r, c) for r in [0, nrows], c in [0, ncols].
+    auto nodeX = [&](int c) { return dataset.xllcorner + c * dataset.cellsize; };
+    auto nodeY = [&](int r) { return dataset.yllcorner + (nrows - r) * dataset.cellsize; };
+    int node_width = ncols + 1;
+    auto nodeId = [&](int r, int c) -> long long {
+      return static_cast<long long>(r) * node_width + c;
+    };
+
+    auto inRegion = [&](int r, int c, int rid) -> bool {
+      if (r < 0 || r >= nrows || c < 0 || c >= ncols) return false;
+      return region_id[static_cast<size_t>(r) * ncols + c] == rid;
+    };
+
+    int processed = 0;
+
+    for (int rid = 0; rid < num_regions; ++rid) {
+      std::unordered_map<long long, std::vector<long long>> edges_from;
+
+      for (int r = 0; r < nrows; ++r) {
+        for (int c = 0; c < ncols; ++c) {
+          if (!inRegion(r, c, rid)) continue;
+
+          if (!inRegion(r - 1, c, rid))  // top of cell is a boundary
+            edges_from[nodeId(r, c + 1)].push_back(nodeId(r, c));
+          if (!inRegion(r + 1, c, rid))  // bottom of cell is a boundary
+            edges_from[nodeId(r + 1, c)].push_back(nodeId(r + 1, c + 1));
+          if (!inRegion(r, c - 1, rid))  // left of cell is a boundary
+            edges_from[nodeId(r, c)].push_back(nodeId(r + 1, c));
+          if (!inRegion(r, c + 1, rid))  // right of cell is a boundary
+            edges_from[nodeId(r + 1, c + 1)].push_back(nodeId(r, c + 1));
+        }
+      }
+
+      // Consume the directed boundary edges into one or more closed rings.
+      // (A region can trace to more than one ring at a "pinch point" where
+      // it touches itself only diagonally -- each ring is still emitted.)
+      std::unordered_map<long long, size_t> cursor;
+      std::vector<std::vector<long long>> rings;
+      long long max_steps = static_cast<long long>(nrows) * ncols * 4 + 16;
+
+      for (auto& entry : edges_from) {
+        long long start = entry.first;
+        while (cursor[start] < entry.second.size()) {
+          std::vector<long long> ring;
+          long long current = start;
+          ring.push_back(current);
+          bool closed = false;
+
+          for (long long step = 0; step < max_steps; ++step) {
+            auto it = edges_from.find(current);
+            if (it == edges_from.end()) break;
+            size_t& used = cursor[current];
+            if (used >= it->second.size()) break;
+            long long next = it->second[used++];
+            ring.push_back(next);
+            current = next;
+            if (current == start) {
+              closed = true;
+              break;
+            }
+          }
+
+          if (closed && ring.size() >= 5) {
+            rings.push_back(std::move(ring));
+          }
+        }
+      }
+
+      if (rings.empty()) continue;
+
+      std::vector<std::vector<double>> ring_coords;
+      ring_coords.reserve(rings.size());
+      for (auto& ring : rings) {
+        std::vector<double> coords;
+        coords.reserve(ring.size() * 2);
+        for (long long node : ring) {
+          int nr = static_cast<int>(node / node_width);
+          int nc = static_cast<int>(node % node_width);
+          coords.push_back(nodeX(nc));
+          coords.push_back(nodeY(nr));
+        }
+        ring_coords.push_back(std::move(coords));
+      }
+      // Largest ring first (treated as the outer boundary of the region).
+      std::sort(ring_coords.begin(), ring_coords.end(),
+                [](const std::vector<double>& a, const std::vector<double>& b) {
+                  return polygonArea(a) > polygonArea(b);
+                });
+
+      Spatial::VectorFeature feature;
+      feature.attributes["id"] = std::to_string(++feature_id);
+      feature.attributes["value"] = std::to_string(region_value[rid]);
+      feature.attributes["cell_count"] = std::to_string(region_cell_count[rid]);
+
+      if (ring_coords.size() == 1) {
+        feature.type = Spatial::VectorFeature::GeometryType::POLYGON;
+        feature.coordinates = ring_coords[0];
+      } else {
+        feature.type = Spatial::VectorFeature::GeometryType::MULTIPOLYGON;
+        for (const auto& coords : ring_coords) {
+          feature.part_starts.push_back(feature.coordinates.size() / 2);
+          feature.coordinates.insert(feature.coordinates.end(), coords.begin(), coords.end());
+        }
+      }
+
+      output.features.push_back(feature);
+      processed++;
+    }
+
     std::cout << "Polygons created: " << processed << "\n";
-    std::cout << "Note: This creates individual cell polygons, not merged areas.\n";
 
   } else if (mode == "contour") {
     std::cout << "Extracting contours (simplified)...\n";

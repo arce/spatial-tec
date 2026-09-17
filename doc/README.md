@@ -9,10 +9,10 @@ This site is the full command reference, written in the style of Unix `man` page
 | [General & Information](commands/info.md) | `spatial_info` |
 | [Format Conversion](commands/conversion.md) | `spatial_csv2geo`, `spatial_geo2csv`, `spatial_osm2csv`, `spatial_csv2osm`, `spatial_shp2csv`, `spatial_csv2shp` |
 | [Vector Processing](commands/vector.md) | `spatial_buffer`, `spatial_centroid`, `spatial_clip_vector`, `spatial_simplify`, `spatial_union`, `spatial_merge_vector`, `spatial_validate`, `spatial_calc_vector` |
-| [Raster Processing](commands/raster.md) | `spatial_calc`, `spatial_clip_raster`, `spatial_filter_raster`, `spatial_merge_raster`, `spatial_rasterize`, `spatial_vectorize`, `spatial_resample`, `spatial_reclass`, `spatial_rat` |
+| [Raster Processing](commands/raster.md) | `spatial_calc`, `spatial_clip_raster`, `spatial_filter_raster`, `spatial_merge_raster`, `spatial_rasterize`, `spatial_vectorize`, `spatial_resample`, `spatial_reclass`, `spatial_rat`, `spatial_georeference` |
 | [Spatial Queries & Analysis](commands/analysis.md) | `spatial_query`, `spatial_join`, `spatial_difference`, `spatial_distance`, `spatial_filter_vector`, `spatial_interpolate`, `spatial_statistics`, `spatial_zonal` |
 | [Networks, LRS & Geocoding](commands/network.md) | `spatial_address`, `spatial_network`, `spatial_shortest_path`, `spatial_lrs_create`, `spatial_lrs_locate`, `spatial_lrs_segment` |
-| [Cartography & Visualization](commands/cartography.md) | `spatial_colormap`, `spatial_svg`, `spatial_viewer` |
+| [Cartography & Visualization](commands/cartography.md) | `spatial_colormap`, `spatial_svg`, `spatial_viewer`, `spatial_editor` |
 | [Coordinate Reference Systems](commands/projection.md) | `spatial_reproject` |
 
 ## Quick start

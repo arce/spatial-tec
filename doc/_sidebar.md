@@ -31,6 +31,7 @@
   - [spatial_resample](commands/raster.md#spatial_resample)
   - [spatial_reclass](commands/raster.md#spatial_reclass)
   - [spatial_rat](commands/raster.md#spatial_rat)
+  - [spatial_georeference](commands/raster.md#spatial_georeference)
 
 - Spatial Queries & Analysis
   - [spatial_query](commands/analysis.md#spatial_query)
@@ -54,6 +55,7 @@
   - [spatial_colormap](commands/cartography.md#spatial_colormap)
   - [spatial_svg](commands/cartography.md#spatial_svg)
   - [spatial_viewer](commands/cartography.md#spatial_viewer)
+  - [spatial_editor](commands/cartography.md#spatial_editor)
 
 - Coordinate Reference Systems
   - [spatial_reproject](commands/projection.md#spatial_reproject)

@@ -350,3 +350,60 @@ spatial_rat classes.asc rat_table.csv classes_with_rat.asc -mode import
 **SEE ALSO**
 
 [spatial_reclass](#spatial_reclass)
+
+---
+
+## spatial_georeference
+
+**NAME**
+
+`spatial_georeference` — graphical tool to georeference a scanned image into a `.asc` raster using control points
+
+**SYNOPSIS**
+
+```
+spatial_georeference [image]
+```
+
+**DESCRIPTION**
+
+Like `spatial_viewer`, this is a graphical (GUI, FLTK-based) tool rather than a batch command. It loads a PNG or JPEG image (a scanned map, an aerial photo, a site plan) and lets the user register it spatially by clicking points on the image whose real-world geographic coordinates are known, then exports the result as a `.asc` raster — the same Arc/Info ASCII Grid format every other raster tool in this suite reads and writes (`ASCIIGridReader`/`writeRasterASCII`, see `include/core/ascii_grid.hpp` / `spatial_io.hpp`). Loading the image and exporting the raster are driven from the **File** menu, and zooming from the **Zoom** menu; the window can be resized freely (the image area grows/shrinks with it, and the control panel keeps its width, hugging the right edge).
+
+Because that `.asc` format only supports a north-up grid with a single square cell size (`ncols`/`nrows`/`xllcorner`/`yllcorner`/`cellsize` — no rotation or shear), the fit between pixel space and geographic space is a constrained affine model: independent scale and translation on X and on Y, no rotation. Two control points solve it exactly; three or more are fit by least squares, and the RMS error of each axis is reported before and after export so misplaced points are easy to spot. For a reliable fit, mark points spread across the image (especially its corners) rather than clustered in one area, and avoid marking two points in the same image column or row.
+
+The output raster has a single numeric band, as `RasterDataset` requires -- but that doesn't mean the image's real colors are lost. A "Values:" choice selects one of two export modes:
+
+- **True color (palette + RAT)** (default): every cell stores the *index* of a color palette (up to 256 entries) rather than a grayscale number. The palette is either the image's exact distinct colors (when there are 256 or fewer -- typical of a scanned line map or a screenshot), or a 256-color approximation built with median-cut quantization (the same technique GIF/PNG-8 encoders use) when the source has more. The true RGB of every palette entry is written as an embedded RAT (`include/core/ascii_grid.hpp`'s `@RAT` section, the same mechanism `spatial_rat` reads/writes): columns `value` (the palette index), `color` (`RRGGBB` hex), and `count` (cells using it). Because the cell value here is only meaningful through that table, the RAT is mandatory in this mode.
+- **Grayscale (numeric)**: every cell stores the actual grayscale luminance (`0.299R + 0.587G + 0.114B`, rounded to a whole 0-255 number so it round-trips exactly through the `.asc` text and any RAT lookup) -- a real numeric magnitude, useful as input to `spatial_calc` and similar tools. A grayscale RAT (same `value`/`color`/`count` shape, `color` repeating the gray level in R/G/B) can optionally be attached via "Include RAT table (colors)", purely so the layer also looks right in a viewer.
+
+In both modes, resampling is nearest-neighbor, and without *some* RAT `spatial_viewer` falls back to its fixed blue-green-red gradient for any raster (see ADR-0002) -- which would render either export as a false-color heatmap. Opening the layer's properties there and setting `color` as the "Color field" shows the real picture.
+
+**CONTROLS**
+
+| Action | Effect |
+|---|---|
+| File > Load Image... | Open a PNG/JPEG image |
+| File > Export .asc... | Compute the fit and save the georeferenced raster |
+| Zoom > Zoom In / Zoom Out / Reset View | Same as the `+` / `-` / `R` keys below |
+| Mouse wheel | Zoom in/out, centered on the cursor |
+| Shift+wheel, or a trackpad's two-finger swipe | Pan the image directly from the scroll gesture |
+| Left-drag | Pan the image |
+| "Mark mode: click to add" + left click | Add a control point at that pixel (opens a dialog to enter its known X/Y) |
+| "Mark mode: click to add" + right click | Delete the nearest control point |
+| `+` / `-` | Zoom in/out |
+| `R` | Reset zoom/pan |
+
+The control point list can be edited (select a row, change X/Y, "Update coordinates") or removed one at a time or all at once, and can be saved to / loaded from a simple CSV (`pixel_col,pixel_row,geo_x,geo_y`) so a session's points survive a restart.
+
+Before export, the output cell size can be left automatic (the average of the fitted pixel width/height in geographic units) or set manually, and the `NODATA` value and an optional free-text CRS label are configurable; both are written into the `.asc`.
+
+**EXAMPLES**
+
+```
+spatial_georeference
+spatial_georeference scanned_map.png
+```
+
+**SEE ALSO**
+
+[spatial_viewer](cartography.md#spatial_viewer), [spatial_rasterize](#spatial_rasterize)

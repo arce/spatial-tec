@@ -88,6 +88,8 @@ Running any command with no arguments prints its usage help.
 | `spatial_lrs_segment` | Build segments from linear events over an LRS |
 | `spatial_svg` | Generate SVG maps |
 | `spatial_viewer` | Interactive graphical layer viewer |
+| `spatial_georeference` | Georeference a PNG/JPEG image via control points, export as `.asc` |
+| `spatial_editor` | Create and edit point/line/polygon vector features, save as spatial CSV |
 | `spatial_calc_vector` | Compute vector attribute columns via an expression |
 | `spatial_reclass` | Reclassify raster values via a lookup table |
 | `spatial_rat` | Export/import a raster attribute table: `-mode export\|import` |

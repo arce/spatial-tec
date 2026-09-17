@@ -1,0 +1,215 @@
+<html><head><title>Preview</title></head><body><h1>Raster Processing</h1>
+<p>Tools for working with raster grids (Arc/Info ASCII Grid, <tt>.asc</tt>/<tt>.grd</tt>): map algebra, clipping, mosaicking, resampling, and conversion to/from vector data.</p>
+<p>&nbsp;&nbsp;&nbsp;&#9474;&nbsp; <i>Syntax conventions: <tt>&lt;argument&gt;</tt> is required, <tt>[optional]</tt> is optional, <tt>...</tt> means repetition. Options use a single dash (<tt>-option</tt>).</i></p>
+<hr>
+<h2>spatial_calc</h2>
+<p><b>NAME</b></p>
+<p><tt>spatial_calc</tt> — perform mathematical operations on rasters (map algebra)</p>
+<p><b>SYNOPSIS</b></p>
+<pre><code>spatial_calc &lt;input1&gt; [input2 ...] &lt;output&gt; &lt;expression&gt;
+</code></pre>
+<p><b>DESCRIPTION</b></p>
+<p>Evaluates a mathematical expression cell-by-cell over one or more input rasters and writes the result to a new raster.</p>
+<p><b>EXPRESSION SYNTAX</b></p>
+<table border=1>
+<tr><th>Element</th><th>Meaning</th></tr>
+<tr><td><tt>value</tt></td><td>Value of the current cell</td></tr>
+<tr><td><tt>raster1</tt>, <tt>raster2</tt>, ...</td><td>Input raster names, in command-line order</td></tr>
+<tr><td>Operators</td><td><tt>+ - * / ^ &gt; &lt; &gt;= &lt;= == !=</tt></td></tr>
+<tr><td>Functions</td><td><tt>sqrt() abs() sin() cos() tan() log() log10() exp() pow() min() max() mean()</tt></td></tr>
+<tr><td>Conditional</td><td><tt>condition ? true_value : false_value</tt></td></tr>
+</table>
+<p><b>EXAMPLES</b></p>
+<pre><code>spatial_calc elev.asc elev_ft.asc "value * 0.3048"
+spatial_calc band1.asc band2.asc result.asc "raster1 + raster2"
+spatial_calc elev.asc slope.asc "atan(value) * 57.2958"
+spatial_calc elev.asc mask.asc "value &gt; 20 ? 1 : 0"
+spatial_calc r1.asc r2.asc r3.asc result.asc "(r1 + r2) / r3"
+</code></pre>
+<p><b>SEE ALSO</b></p>
+<p><a href="#spatial_filter_raster">spatial<i>filter</i>raster</a>, <a href="analysis.md#spatial_statistics">spatial_statistics</a></p>
+<hr>
+<h2>spatial<i>clip</i>raster</h2>
+<p><b>NAME</b></p>
+<p><tt>spatial_clip_raster</tt> — clip raster data by spatial extent</p>
+<p><b>SYNOPSIS</b></p>
+<pre><code>spatial_clip_raster &lt;input&gt; &lt;output&gt; [options]
+</code></pre>
+<p><b>DESCRIPTION</b></p>
+<p>Clips a raster to a bounding box, a polygon mask, or the extent of another raster.</p>
+<p><b>OPTIONS</b></p>
+<table border=1>
+<tr><th>Option</th><th>Description</th></tr>
+<tr><td><tt>-bbox &lt;minx&gt; &lt;miny&gt; &lt;maxx&gt; &lt;maxy&gt;</tt></td><td>Clip by bounding box</td></tr>
+<tr><td><tt>-polygon &lt;file&gt;</tt></td><td>Clip using a polygon as a mask</td></tr>
+<tr><td><tt>-clip_to &lt;file&gt;</tt></td><td>Clip to the extent of another raster</td></tr>
+<tr><td><tt>-invert</tt></td><td>Invert the mask</td></tr>
+</table>
+<p><b>EXAMPLES</b></p>
+<pre><code>spatial_clip_raster elevation.asc area.asc -bbox -84.5 9.5 -84.0 10.0
+spatial_clip_raster elevation.asc mask.asc -polygon boundary.csv
+spatial_clip_raster elevation.asc matched.asc -clip_to other.asc
+</code></pre>
+<p><b>SEE ALSO</b></p>
+<p><a href="vector.md#spatial_clip_vector">spatial<i>clip</i>vector</a>, <a href="#spatial_resample">spatial_resample</a></p>
+<hr>
+<h2>spatial<i>filter</i>raster</h2>
+<p><b>NAME</b></p>
+<p><tt>spatial_filter_raster</tt> — filter raster cells by value</p>
+<p><b>SYNOPSIS</b></p>
+<pre><code>spatial_filter_raster &lt;input&gt; &lt;output&gt; &lt;condition&gt;
+</code></pre>
+<p><b>DESCRIPTION</b></p>
+<p>Keeps only the raster cells that satisfy the given condition; the rest are marked <tt>NODATA</tt>.</p>
+<p>Condition format: <tt>value&gt;10</tt>, <tt>value&lt;5</tt>, <tt>value=3</tt>. Multiple conditions: <tt>value&gt;10 AND value&lt;20</tt>.</p>
+<p><b>EXAMPLES</b></p>
+<pre><code>spatial_filter_raster elevation.asc high.asc "value&gt;20"
+spatial_filter_raster elevation.asc range.asc "value&gt;=15 AND value&lt;=25"
+spatial_filter_raster elevation.asc filtered.asc "value&gt;10 AND value&lt;30"
+</code></pre>
+<p>&nbsp;&nbsp;&nbsp;&#9474;&nbsp; <i><b>Note:</b> always quote the condition to prevent shell interpretation.</i></p>
+<p><b>SEE ALSO</b></p>
+<p><a href="analysis.md#spatial_filter_vector">spatial<i>filter</i>vector</a>, <a href="#spatial_calc">spatial_calc</a></p>
+<hr>
+<h2>spatial<i>merge</i>raster</h2>
+<p><b>NAME</b></p>
+<p><tt>spatial_merge_raster</tt> — build a raster mosaic from multiple files</p>
+<p><b>SYNOPSIS</b></p>
+<pre><code>spatial_merge_raster &lt;input1&gt; [input2 ...] &lt;output&gt; [options]
+</code></pre>
+<p><b>DESCRIPTION</b></p>
+<p>Combines two or more overlapping or adjacent rasters into a single mosaic.</p>
+<p><b>OPTIONS</b></p>
+<table border=1>
+<tr><th>Option</th><th>Description</th></tr>
+<tr><td><tt>-method &lt;method&gt;</tt></td><td><tt>first</tt>, <tt>last</tt>, <tt>min</tt>, <tt>max</tt>, <tt>average</tt>, <tt>sum</tt> (default: <tt>first</tt>)</td></tr>
+<tr><td><tt>-nodata &lt;value&gt;</tt></td><td>Output NODATA value (default: <tt>-9999</tt>)</td></tr>
+</table>
+<p><b>EXAMPLES</b></p>
+<pre><code>spatial_merge_raster tile1.asc tile2.asc tile3.asc mosaic.asc
+spatial_merge_raster t1.asc t2.asc mosaic.asc -method average
+spatial_merge_raster t1.asc t2.asc t3.asc mosaic.asc -method max
+</code></pre>
+<p><b>SEE ALSO</b></p>
+<p><a href="vector.md#spatial_merge_vector">spatial<i>merge</i>vector</a>, <a href="#spatial_resample">spatial_resample</a></p>
+<hr>
+<h2>spatial_rasterize</h2>
+<p><b>NAME</b></p>
+<p><tt>spatial_rasterize</tt> — convert vector data to raster</p>
+<p><b>SYNOPSIS</b></p>
+<pre><code>spatial_rasterize &lt;input&gt; &lt;output&gt; [options]
+</code></pre>
+<p><b>DESCRIPTION</b></p>
+<p>Converts vector features into a regular raster surface, either using a constant value or the value of an attribute.</p>
+<p><b>OPTIONS</b></p>
+<table border=1>
+<tr><th>Option</th><th>Description</th></tr>
+<tr><td><tt>-cellsize &lt;value&gt;</tt></td><td>Cell size of the output raster</td></tr>
+<tr><td><tt>-attribute &lt;col&gt;</tt></td><td>Attribute column to use as the value</td></tr>
+<tr><td><tt>-value &lt;value&gt;</tt></td><td>Constant value for all cells</td></tr>
+<tr><td><tt>-bbox &lt;minx&gt; &lt;miny&gt; &lt;maxx&gt; &lt;maxy&gt;</tt></td><td>Output extent</td></tr>
+<tr><td><tt>-nodata &lt;value&gt;</tt></td><td>NODATA value (default: <tt>-9999</tt>)</td></tr>
+</table>
+<p><b>EXAMPLES</b></p>
+<pre><code>spatial_rasterize cities.csv density.asc -attribute population -cellsize 
+0.01
+spatial_rasterize cities.csv mask.asc -value 1 -cellsize 0.01
+spatial_rasterize zones.csv zones.asc -attribute id -cellsize 0.005
+</code></pre>
+<p><b>SEE ALSO</b></p>
+<p><a href="#spatial_vectorize">spatial_vectorize</a>, <a href="analysis.md#spatial_interpolate">spatial_interpolate</a></p>
+<hr>
+<h2>spatial_vectorize</h2>
+<p><b>NAME</b></p>
+<p><tt>spatial_vectorize</tt> — convert raster data to vector</p>
+<p><b>SYNOPSIS</b></p>
+<pre><code>spatial_vectorize &lt;input&gt; &lt;output&gt; [options]
+</code></pre>
+<p><b>DESCRIPTION</b></p>
+<p>Extracts vector geometry (contours, polygons, or points) from a raster.</p>
+<p><b>OPTIONS</b></p>
+<table border=1>
+<tr><th>Option</th><th>Description</th></tr>
+<tr><td><tt>-contour -interval &lt;value&gt;</tt></td><td>Extract contour lines at regular intervals</td></tr>
+<tr><td><tt>-contour -values &lt;list&gt;</tt></td><td>Extract contour lines at specific values</td></tr>
+<tr><td><tt>-polygonize</tt></td><td>Convert the raster to polygons</td></tr>
+<tr><td><tt>-points</tt></td><td>Convert the raster to points with their value</td></tr>
+<tr><td><tt>-filter &lt;value&gt;</tt></td><td>Only include cells with that value</td></tr>
+</table>
+<p><b>EXAMPLES</b></p>
+<pre><code>spatial_vectorize elevation.asc curves.csv -contour -interval 10
+spatial_vectorize classification.asc polygons.csv -polygonize
+spatial_vectorize elevation.asc points.csv -points
+</code></pre>
+<p><b>SEE ALSO</b></p>
+<p><a href="#spatial_rasterize">spatial_rasterize</a></p>
+<hr>
+<h2>spatial_resample</h2>
+<p><b>NAME</b></p>
+<p><tt>spatial_resample</tt> — change the resolution of raster data</p>
+<p><b>SYNOPSIS</b></p>
+<pre><code>spatial_resample &lt;input&gt; &lt;output&gt; [options]
+</code></pre>
+<p><b>DESCRIPTION</b></p>
+<p>Resamples a raster to a new resolution, a scale factor, or aligns it to a reference raster.</p>
+<p><b>OPTIONS</b></p>
+<table border=1>
+<tr><th>Option</th><th>Description</th></tr>
+<tr><td><tt>-resolution &lt;value&gt;</tt></td><td>New cell size</td></tr>
+<tr><td><tt>-scale &lt;factor&gt;</tt></td><td>Scale factor (<tt>0.5</tt> = double resolution, <tt>2</tt> = half resolution)</td></tr>
+<tr><td><tt>-method &lt;method&gt;</tt></td><td><tt>nearest</tt>, <tt>bilinear</tt>, <tt>cubic</tt>, <tt>average</tt>, <tt>min</tt>, <tt>max</tt> (default: <tt>average</tt>)</td></tr>
+<tr><td><tt>-align_to &lt;file&gt;</tt></td><td>Align to another raster (same resolution and extent)</td></tr>
+<tr><td><tt>-bbox &lt;minx&gt; &lt;miny&gt; &lt;maxx&gt; &lt;maxy&gt;</tt></td><td>Output extent</td></tr>
+<tr><td><tt>-nodata &lt;value&gt;</tt></td><td>NODATA value (default: <tt>-9999</tt>)</td></tr>
+</table>
+<p><b>EXAMPLES</b></p>
+<pre><code>spatial_resample elev.asc elev_100m.asc -resolution 100 -method average
+spatial_resample elev.asc elev_10m.asc -resolution 10 -method bilinear
+spatial_resample elev.asc elev_align.asc -align_to other.asc
+spatial_resample elev.asc elev_half.asc -scale 2 -method average
+</code></pre>
+<p><b>SEE ALSO</b></p>
+<p><a href="#spatial_clip_raster">spatial<i>clip</i>raster</a>, <a href="#spatial_merge_raster">spatial<i>merge</i>raster</a></p>
+<hr>
+<h2>spatial_reclass</h2>
+<p><b>NAME</b></p>
+<p><tt>spatial_reclass</tt> — reclassify raster values using a table of ranges or exact values</p>
+<p><b>SYNOPSIS</b></p>
+<pre><code>spatial_reclass &lt;input.asc&gt; &lt;output.asc&gt; -table &lt;file&gt; [options]
+</code></pre>
+<p><b>DESCRIPTION</b></p>
+<p>Reads a CSV table of rules and reassigns each cell of the input raster according to it. The table supports two formats, auto-detected from its header: ranges (<tt>from,to,new_value</tt>, with <tt>from &lt;= v &lt;= to</tt> inclusive on both ends, first matching rule in table order wins) or exact value (<tt>value,new_value</tt>, with <tt>1e-9</tt> tolerance). Any cell that matches no rule, as well as cells that were already NODATA in the input, are written as NODATA in the output (using the value given by <tt>-nodata</tt>).</p>
+<p><b>OPTIONS</b></p>
+<table border=1>
+<tr><th>Option</th><th>Description</th></tr>
+<tr><td><tt>-table &lt;file.csv&gt;</tt></td><td>Reclassification table: <tt>from,to,new_value</tt> or <tt>value,new_value</tt> columns (<b>required</b>)</td></tr>
+<tr><td><tt>-nodata &lt;value&gt;</tt></td><td>Output NODATA value, also used for cells with no matching rule (default: <tt>-9999</tt>)</td></tr>
+</table>
+<p><b>EXAMPLES</b></p>
+<pre><code>spatial_reclass landuse.asc reclass.asc -table rules.csv
+</code></pre>
+<p><b>SEE ALSO</b></p>
+<p><a href="#spatial_calc">spatial_calc</a>, <a href="#spatial_filter_raster">spatial<i>filter</i>raster</a></p>
+<hr>
+<h2>spatial_rat</h2>
+<p><b>NAME</b></p>
+<p><tt>spatial_rat</tt> — export or import a raster's Raster Attribute Table (RAT) from an ASCII Grid file</p>
+<p><b>SYNOPSIS</b></p>
+<pre><code>spatial_rat &lt;input.asc&gt; &lt;table.csv&gt; [output.asc] -mode &lt;export|import&gt;
+</code></pre>
+<p><b>DESCRIPTION</b></p>
+<p>The project's ASCII Grid format internally supports an optional <tt>@RAT</tt> section holding a classification table, read and written automatically by the rest of the raster commands (see <tt>include/core/spatial_types.hpp</tt> and <tt>spatial_io.hpp</tt>). <tt>spatial_rat</tt> is the command-line interface for managing it from outside the <tt>.asc</tt> file itself, in both directions under a single binary with <tt>-mode</tt>.</p>
+<p><tt>-mode export</tt> fails with an error if <tt>&lt;input.asc&gt;</tt> has no embedded <tt>@RAT</tt> section. <tt>-mode import</tt> requires <tt>&lt;table.csv&gt;</tt> to have a column named <tt>value</tt> (any capitalization; normalized to lowercase on import), used to match each table row against the raster cells that hold that value.</p>
+<p><b>OPTIONS</b></p>
+<table border=1>
+<tr><th>Option</th><th>Description</th></tr>
+<tr><td><tt>-mode export</tt></td><td>Export the RAT already embedded in <tt>&lt;input.asc&gt;</tt> to <tt>&lt;table.csv&gt;</tt></td></tr>
+<tr><td><tt>-mode import</tt></td><td>Import <tt>&lt;table.csv&gt;</tt> as the RAT for <tt>&lt;input.asc&gt;</tt>, writing <tt>&lt;output.asc&gt;</tt> (<b>required</b> for this mode)</td></tr>
+</table>
+<p><b>EXAMPLES</b></p>
+<pre><code>spatial_rat classes.asc classes_rat.csv -mode export
+spatial_rat classes.asc rat_table.csv classes_with_rat.asc -mode import
+</code></pre>
+<p><b>SEE ALSO</b></p>
+<p><a href="#spatial_reclass">spatial_reclass</a></p>
+</body></html>

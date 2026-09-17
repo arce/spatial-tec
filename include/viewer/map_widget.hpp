@@ -294,6 +294,18 @@ public:
     }
   }
 
+  // Read-only screen<->world coordinate transforms and view state, exposed
+  // so a subclass can place new vertices exactly under the cursor and
+  // hit-test existing ones (see spatial_editor.cpp, which digitizes
+  // point/line/polygon features by clicking on the map). Pure passthroughs
+  // to the private helpers below -- no behavior change for spatial_viewer.
+  double screenToWorldX(double sx) const { return toWorldX(sx); }
+  double screenToWorldY(double sy) const { return toWorldY(sy); }
+  double worldToScreenX(double wx) const { return toScreenX(wx); }
+  double worldToScreenY(double wy) const { return toScreenY(wy); }
+  double currentScale() const { return scale_x_; }
+  bool hasData() const { return has_data_; }
+
 private:
   void updateCursorPos() {
     mouse_in_view_ = true;

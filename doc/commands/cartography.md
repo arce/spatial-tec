@@ -197,4 +197,61 @@ spatial_viewer cities.csv
 
 **SEE ALSO**
 
-[spatial_colormap](#spatial_colormap), [spatial_info](info.md#spatial_info)
+[spatial_colormap](#spatial_colormap), [spatial_info](info.md#spatial_info), [spatial_editor](#spatial_editor)
+
+## spatial_editor
+
+**NAME**
+
+`spatial_editor` — graphical tool to create and edit point/line/polygon vector features
+
+**SYNOPSIS**
+
+```
+spatial_editor
+```
+
+**DESCRIPTION**
+
+A graphical (GUI, FLTK-based) digitizing tool: it creates new point, line and polygon features by clicking on a blank or loaded layer, edits existing ones, and saves the result as this project's spatial CSV format (WKT geometry column, the same format `spatial_viewer`, `spatial_csv2geo` and the rest of the vector tools read and write).
+
+It started as a copy of `spatial_viewer.cpp` and reuses the same underlying map widget (pan, zoom, rendering of vector layers), so panning and zooming feel identical between the two tools; see `adr/0007-editor-tool.md` for what it deliberately leaves out of this first version (only one editable layer at a time, no separate read-only background/reference layers, and whole-feature delete rather than inserting or removing a single vertex from an existing line or polygon).
+
+Use `File > New Layer...` to start from a blank layer (you choose the attribute column names up front, comma-separated — the geometry column is automatic) or `File > Open Layer...` to edit an existing spatial CSV. Pick a tool from the `Draw` menu, then click on the map:
+
+- **Point** commits a new point feature on every click.
+- **Line** / **Polygon** accumulate vertices as you click; finish the shape with a double-click, the Enter key, or `Draw > Finish shape` (`Draw > Cancel shape` or Esc discards it instead). A polygon needs at least 3 vertices, a line at least 2.
+- **Select / Edit** clicks a feature to select it (also selectable from the Features list on the right); drag one of its square handles to move that vertex, or press Delete / "Delete selected feature" to remove the whole feature.
+
+The Attribute columns list manages the layer's columns (add/remove); the selected feature's values for those columns are edited in the form below it and written back with "Update attributes".
+
+**MENU**
+
+| Menu | Actions |
+|---|---|
+| File | New Layer..., Open Layer..., Save, Save As... |
+| Draw | Select / Edit, Point, Line, Polygon, Finish shape, Cancel shape |
+
+**CONTROLS**
+
+| Action | Effect |
+|---|---|
+| Mouse wheel | Zoom in/out, centered on the cursor |
+| Middle-drag | Pan the map |
+| Left click (Point tool) | Place a point feature |
+| Left click (Line/Polygon tool) | Add a vertex to the shape being drawn |
+| Double-click, Enter, or "Finish shape" (Line/Polygon tool) | Finish the current shape |
+| Esc or "Cancel shape" (Line/Polygon tool) | Discard the current shape |
+| Left click (Select / Edit tool) | Select the feature under the cursor, or deselect |
+| Drag a handle (Select / Edit tool) | Move that vertex |
+| Delete / Backspace (Select / Edit tool) | Delete the selected feature |
+
+**EXAMPLES**
+
+```
+spatial_editor
+```
+
+**SEE ALSO**
+
+[spatial_viewer](#spatial_viewer), [spatial_csv2geo](conversion.md#spatial_csv2geo)
