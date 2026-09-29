@@ -290,6 +290,13 @@ double interpolateNaturalNeighbor(double x, double y, const std::vector<Point2D>
   return interpolateIDWNeighbors(x, y, points, 10, 1.0);
 }
 
+// ---------------------------------------------------------------------------
+// Radial Basis Function interpolation (exact interpolator)
+//   f(x) = sum_i w_i * phi(|x - p_i|) + a0 + a1*x + a2*y
+// Weights are found by solving the (n+3)x(n+3) linear system
+//   [ PHI  P ] [w]   [z]
+//   [ P^T  0 ] [a] = [0]
+// ---------------------------------------------------------------------------
 enum RBFFunction { RBF_GAUSSIAN, RBF_MULTIQUADRIC, RBF_INVERSE_MULTIQUADRIC, RBF_THIN_PLATE, RBF_LINEAR };
 
 bool parseRBFFunction(const std::string& name, RBFFunction& out) {
@@ -329,6 +336,7 @@ inline double rbfPhi(RBFFunction f, double r, double sigma) {
   return 0.0;
 }
 
+// Mean distance from each point to its nearest neighbor (used for -auto_sigma)
 double estimateSigma(const std::vector<Point2D>& points) {
   if (points.size() < 2) return 1.0;
   double sum = 0;
@@ -345,6 +353,7 @@ double estimateSigma(const std::vector<Point2D>& points) {
   return s > 0 ? s : 1.0;
 }
 
+// Gaussian elimination with partial pivoting. A is n x n (row-major), b is n.
 bool solveLinearSystem(std::vector<double>& A, std::vector<double>& b, int n) {
   for (int k = 0; k < n; ++k) {
     int piv = k;
@@ -379,10 +388,10 @@ struct RBFModel {
   bool sigma_set = false;
   bool auto_sigma = false;
   RBFFunction rbf_func = RBF_GAUSSIAN;
-  double cx = 0, cy = 0;
-  std::vector<Point2D> pts;
-  std::vector<double> w;
-  double a0 = 0, a1 = 0, a2 = 0;
+  double cx = 0, cy = 0;          // centroid (for numerical stability)
+  std::vector<Point2D> pts;       // centered points
+  std::vector<double> w;          // RBF weights
+  double a0 = 0, a1 = 0, a2 = 0;  // linear trend
   bool ok = false;
 
   bool fit(const std::vector<Point2D>& points, RBFFunction f, double sig) {
@@ -397,6 +406,7 @@ struct RBFModel {
     pts.clear();
     for (const auto& p : points) pts.push_back(Point2D(p.x - cx, p.y - cy, p.z));
 
+    // Try linear polynomial (3 terms); fall back to constant (1 term) if singular
     for (int np : {3, 1}) {
       if (n < np) continue;
       int m = n + np;
@@ -461,8 +471,7 @@ bool parseMethod(const std::string& method, InterpMethod& out) {
     { out = LINEAR; return true; }
   if (m == "kriging" || m == "krig")
     { out = KRIGING; return true; }
-  // CORRECCIÓN: Se elimina "nn" de aquí para evitar el conflicto con Nearest Neighbor
-  if (m == "natural" || m == "natural_neighbor" || m == "nat")
+  if (m == "natural" || m == "natural_neighbor" || m == "nn")
     { out = NATURAL_NEIGHBOR; return true; }
   if (m == "rbf")
     { out = RBF; return true; }
@@ -621,22 +630,18 @@ void crossValidate(const std::vector<Point2D>& points, InterpMethod method, doub
 
 void printUsage() {
   std::cerr << "spatial_interpolate - Spatial interpolation from points to raster\n\n";
-  std::cerr << "Usage: spatial_interpolate <input.csv> <output.asc> -attribute <col> -cellsize <value> [options]\n\n";
-  std::cerr << "Required arguments:\n";
-  std::cerr << "  <input.csv>        Input points file (CSV format)\n";
-  std::cerr << "  <output.asc>       Output raster file (ASCII Grid format)\n";
+  std::cerr << "Usage: spatial_interpolate <input.csv> <output.asc> -attribute <col> [options]\n\n";
+  std::cerr << "Required:\n";
   std::cerr << "  -attribute <col>   Column name for values to interpolate\n";
-  std::cerr << "  -cellsize <value>  Cell size of output raster (must be > 0)\n\n";
+  std::cerr << "  -cellsize <value>  Cell size of output raster\n\n";
   std::cerr << "Methods:\n";
   std::cerr << "  -method <method>   Interpolation method:\n";
-  std::cerr << "                     nearest (nn), idw, idw_power (idwp), idw_neighbors (idwn),\n";
-  std::cerr << "                     linear (lin), kriging (krig), natural (nat), rbf\n";
+  std::cerr << "                     nearest, idw, idw_power, idw_neighbors,\n";
+  std::cerr << "                     linear, kriging, natural, rbf\n";
   std::cerr << "                     (default: idw)\n\n";
   std::cerr << "Options:\n";
   std::cerr << "  -power <value>     Power for IDW (default: 2.0)\n";
-  std::cerr << "  -neighbors <n>     Number of neighbors for IDW (default: 12).\n";
-  std::cerr << "                     Note: Combining idw/idw_power with -neighbors automatically\n";
-  std::cerr << "                     switches execution to neighbor-restricted IDW.\n";
+  std::cerr << "  -neighbors <n>     Number of neighbors for IDW (default: 12)\n";
   std::cerr << "  -radius <value>    Search radius for idw/idw_neighbors (alias: -search_radius)\n";
   std::cerr << "                     Cells with no points in radius get NODATA (default: no limit)\n";
   std::cerr << "  -function <name>   RBF function: gaussian (default), multiquadric,\n";
@@ -817,7 +822,7 @@ int main(int argc, char* argv[]) {
               << "Valid: nearest, idw, idw_power, idw_neighbors, linear, kriging, natural, rbf\n";
     return 1;
   }
-
+  // -neighbors with idw/idw_power: restrict IDW to the n nearest points
   if (neighbors_set && (method == IDW || method == IDW_POWER)) {
     if (n_neighbors < 1) {
       std::cerr << "Error: -neighbors must be >= 1\n";
@@ -825,7 +830,6 @@ int main(int argc, char* argv[]) {
     }
     method = (n_neighbors == 1) ? NEAREST : IDW_NEIGHBORS;
   }
-
   RBFModel rbf_model;
   if (method == RBF) {
     if ((int)points.size() > RBF_MAX_POINTS) {
@@ -866,3 +870,4 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
+

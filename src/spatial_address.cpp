@@ -100,6 +100,22 @@ struct StreetSegment {
   }
 };
 
+void printUsage() {
+  std::cerr << "spatial_address - Geocode addresses by street interpolation\n\n";
+  std::cerr << "Usage: spatial_address <streets.csv> <addresses.csv> <output.csv> [options]\n\n";
+  std::cerr << "Street file must contain:\n";
+  std::cerr << "  street_name, left_from, left_to, right_from, right_to, geometry\n";
+  std::cerr << "  Optional: city, postal_code\n\n";
+  std::cerr << "Addresses file must contain:\n";
+  std::cerr << "  id, house_number, street_name\n";
+  std::cerr << "  Optional: city, postal_code\n\n";
+  std::cerr << "Options:\n";
+  std::cerr << "  -offset <value>   Lateral offset from centerline (default: 5.0)\n";
+  std::cerr << "  -h, -help         Display this help message\n\n";
+  std::cerr << "Examples:\n";
+  std::cerr << "  spatial_address streets.csv addresses.csv result.csv\n";
+}
+
 std::vector<double> parseWKTGeometry(const std::string& wkt) {
   std::vector<double> coords;
   std::string str = trim(wkt);
@@ -126,7 +142,8 @@ std::vector<double> parseWKTGeometry(const std::string& wkt) {
 
   std::string inner = str.substr(start + 1, end - start - 1);
 
-  if (geom_type == "LINESTRING" || geom_type == "LINESTRING") {
+  // Corregido: eliminada condición redundante
+  if (geom_type == "LINESTRING") {
     auto points = split(inner, ',');
     for (const auto& point : points) {
       std::string p = trim(point);
@@ -141,6 +158,7 @@ std::vector<double> parseWKTGeometry(const std::string& wkt) {
           coords.push_back(x);
           coords.push_back(y);
         } catch (const std::exception& e) {
+          std::cerr << "  Warning: Failed to parse coordinate values: " << e.what() << "\n";
         }
       }
     }
@@ -162,6 +180,7 @@ std::vector<double> parseWKTGeometry(const std::string& wkt) {
           coords.push_back(x);
           coords.push_back(y);
         } catch (const std::exception& e) {
+          std::cerr << "  Warning: Failed to parse coordinate values: " << e.what() << "\n";
         }
       }
     }
@@ -184,6 +203,7 @@ std::vector<double> parseWKTGeometry(const std::string& wkt) {
           coords.push_back(x);
           coords.push_back(y);
         } catch (const std::exception& e) {
+          std::cerr << "  Warning: Failed to parse coordinate values: " << e.what() << "\n";
         }
       }
     }
@@ -211,7 +231,6 @@ std::vector<StreetSegment> readStreetSegmentsDirect(const std::string& filename)
   std::vector<std::string> headers;
   bool is_header = true;
   int line_num = 0;
-  int geometry_col = -1;
 
   int col_street_name = -1;
   int col_left_from = -1;
@@ -246,7 +265,7 @@ std::vector<StreetSegment> readStreetSegmentsDirect(const std::string& filename)
           col_right_from = i;
         } else if (lower == "right_to" || lower == "r_to") {
           col_right_to = i;
-        } else if (lower == "city" || lower == "city") {
+        } else if (lower == "city") { // Corregido: eliminada condición redundante
           col_city = i;
         } else if (lower == "postal_code" || lower == "zip" || lower == "codigo_postal") {
           col_postal_code = i;
@@ -364,7 +383,7 @@ std::vector<AddressInput> readAddressesDirect(const std::string& filename) {
           col_house_number = i;
         } else if (lower == "street_name" || lower == "street" || lower == "name") {
           col_street_name = i;
-        } else if (lower == "city" || lower == "city") {
+        } else if (lower == "city") { // Corregido: eliminada condición redundante
           col_city = i;
         } else if (lower == "postal_code" || lower == "zip" || lower == "codigo_postal") {
           col_postal_code = i;
@@ -565,22 +584,13 @@ void writeGeocodedResults(const std::vector<AddressInput>& addresses,
   }
 }
 
-void printUsage() {
-  std::cerr << "spatial_address - Geocode addresses by street interpolation\n\n";
-  std::cerr << "Usage: spatial_address <streets.csv> <addresses.csv> <output.csv> [options]\n\n";
-  std::cerr << "Street file must contain:\n";
-  std::cerr << "  street_name, left_from, left_to, right_from, right_to, geometry\n";
-  std::cerr << "  Optional: city, postal_code\n\n";
-  std::cerr << "Addresses file must contain:\n";
-  std::cerr << "  id, house_number, street_name\n";
-  std::cerr << "  Optional: city, postal_code\n\n";
-  std::cerr << "Options:\n";
-  std::cerr << "  -offset <value>   Lateral offset from centerline (default: 5.0)\n";
-  std::cerr << "\nExamples:\n";
-  std::cerr << "  spatial_address streets.csv addresses.csv result.csv\n";
-}
-
 int main(int argc, char* argv[]) {
+  // Manejo correcto de banderas de ayuda antes de validar requerimientos mínimos
+  if (argc == 2 && (std::string(argv[1]) == "-h" || std::string(argv[1]) == "-help")) {
+    printUsage();
+    return 0;
+  }
+
   if (argc < 4) {
     printUsage();
     return 1;
@@ -595,6 +605,13 @@ int main(int argc, char* argv[]) {
     std::string arg = argv[i];
     if (arg == "-offset" && i + 1 < argc) {
       offset = std::stod(argv[++i]);
+    } else if (arg == "-h" || arg == "-help") {
+      printUsage();
+      return 0;
+    } else {
+      std::cerr << "Error: Unknown option or missing value: " << arg << "\n\n";
+      printUsage();
+      return 1;
     }
   }
 
@@ -655,4 +672,3 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
-

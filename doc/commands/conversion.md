@@ -270,3 +270,55 @@ spatial_csv2shp parcels.csv parcels.shp -exclude internal_id
 **SEE ALSO**
 
 [spatial_shp2csv](#spatial_shp2csv)
+
+---
+
+## spatial_xy2csv
+
+**NAME**
+
+`spatial_xy2csv` — convert a CSV with coordinate columns (x/y or longitude/latitude) to spatial CSV
+
+**SYNOPSIS**
+
+```
+spatial_xy2csv <input.csv> <output.csv> [options]
+```
+
+**DESCRIPTION**
+
+Adds a WKT `geometry` column with `POINT(x y)` to a plain CSV table, built from two coordinate columns, so the table can be used by the rest of the vector tools. All original rows and columns are kept (unless `-drop_xy` is given), in the same order.
+
+If `-x`/`-y` are not given, the columns are detected by name (case-insensitive): X from `lon`, `long`, `longitude`, `longitud`, `lng`, then `x`, `este`, `easting`; Y from `lat`, `latitude`, `latitud`, then `y`, `norte`, `northing`. WKT always uses the order X Y, so longitude goes first.
+
+The input may use `,`, `;` or tab as separator (auto-detected from the header) and a decimal comma in the coordinates (common in spreadsheets exported with Spanish regional settings); coordinates are written with a decimal point, both in the geometry and in the original coordinate columns. Quoted fields (including `""` escapes and line breaks), a UTF-8 BOM and CRLF line endings are handled. The output is always comma-separated.
+
+Rows with empty or non-numeric coordinates are skipped with a warning that includes the row number (the first 10, or all of them with `-verbose`). When the coordinate columns are longitude/latitude, rows outside ±180 / ±90 are skipped too, and a hint is printed if latitude and longitude appear to be swapped.
+
+The CRS is written to the header as `# CRS: ...`: the `-crs` value, or the CRS already present in the input header, or `EPSG:4326` when longitude/latitude columns are used. With other column names (e.g. `ESTE`/`NORTE` in CRTM05) no CRS is assumed; pass `-crs`.
+
+An input that already has a `geometry`, `geom` or `wkt` column is rejected, since it is already a spatial CSV.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-x <col>` | X / longitude column (default: auto-detected) |
+| `-y <col>` | Y / latitude column (default: auto-detected) |
+| `-crs <value>` | CRS for the header (default: input CRS, or `EPSG:4326` for lon/lat columns) |
+| `-delimiter <char>` | Input separator: `,`, `;` or `tab` (default: auto-detected) |
+| `-geometry_column <name>` | Name of the new geometry column (default: `geometry`) |
+| `-drop_xy` | Remove the coordinate columns from the output |
+| `-verbose` | List every skipped row |
+
+**EXAMPLES**
+
+```
+spatial_xy2csv sismos.csv sismos_geo.csv
+spatial_xy2csv sismos.csv sismos_geo.csv -x Longitud -y Latitud
+spatial_xy2csv puntos.csv puntos_geo.csv -x ESTE -y NORTE -crs EPSG:5367 -drop_xy
+```
+
+**SEE ALSO**
+
+[spatial_csv2geo](#spatial_csv2geo), [spatial_reproject](projection.md#spatial_reproject)

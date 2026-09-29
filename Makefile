@@ -133,6 +133,7 @@ CONSOLE_PROGRAMS := \
     spatial_csv2osm \
     spatial_shp2csv \
     spatial_csv2shp \
+    spatial_xy2csv \
     spatial_colormap \
     spatial_network \
     spatial_shortest_path \
@@ -416,6 +417,7 @@ help:
 	@echo "  spatial_csv2osm          - Convert spatial CSV to OpenStreetMap XML"
 	@echo "  spatial_shp2csv          - Convert a Shapefile (.shp/.shx/.dbf) to spatial CSV"
 	@echo "  spatial_csv2shp          - Convert spatial CSV to Shapefile (.shp/.shx/.dbf)"
+	@echo "  spatial_xy2csv           - Convert a CSV with x/y or lat/lon columns to spatial CSV"
 	@echo "  spatial_colormap         - Generate choropleth color mapping"
 	@echo "  spatial_address          - Geocode addresses by street interpolation"
 	@echo "  spatial_svg              - Generate SVG map from vector data"

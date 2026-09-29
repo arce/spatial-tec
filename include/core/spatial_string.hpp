@@ -26,8 +26,9 @@ inline std::string toUpper(const std::string& s) {
 inline bool isNumber(const std::string& s) {
     if (s.empty()) return false;
     try {
-        std::stod(s);
-        return true;
+        size_t pos = 0;
+        std::stod(s, &pos);
+        return pos == s.size();  // the whole string must be a number
     } catch (...) {
         return false;
     }

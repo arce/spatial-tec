@@ -65,6 +65,7 @@ Running any command with no arguments prints its usage help.
 | `spatial_csv2osm` | Spatial CSV → OpenStreetMap XML |
 | `spatial_shp2csv` | Shapefile (.shp/.shx/.dbf) → spatial CSV |
 | `spatial_csv2shp` | Spatial CSV → Shapefile (.shp/.shx/.dbf) |
+| `spatial_xy2csv` | CSV with x/y or lat/lon columns → spatial CSV |
 | `spatial_difference` | Difference between vector datasets |
 | `spatial_distance` | Distances between features |
 | `spatial_filter_raster` | Filter raster cells by value |

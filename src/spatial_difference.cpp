@@ -431,12 +431,19 @@ int main(int argc, char* argv[]) {
     } else if (arg == "-distance" && i + 1 < argc) {
       operation = "distance";
       distance = std::stod(argv[++i]);
+    } else if (arg.size() > 1 && arg[0] == '-') {
+      std::cerr << "Error: Unknown option or missing value: " << arg << "\n\n";
+      printUsage();
+      return 1;
     } else if (source_file.empty()) {
       source_file = arg;
     } else if (target_file.empty()) {
       target_file = arg;
-    } else {
+    } else if (output_file.empty()) {
       output_file = arg;
+    } else {
+      std::cerr << "Error: Unexpected argument: " << arg << "\n";
+      return 1;
     }
   }
 

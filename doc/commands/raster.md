@@ -214,6 +214,10 @@ spatial_vectorize <input> <output> [options]
 
 Extracts vector geometry (contours, polygons, or points) from a raster.
 
+`-contour` traces contour lines with marching squares over the cell centers and writes one `LINESTRING` per continuous line (columns `id`, `value`).
+
+`-polygonize` merges contiguous cells with the same value into polygons (columns `id`, `value`, `cell_count`). The cell-edge boundaries are then simplified to remove the stair-step effect, preserving topology: each boundary shared by two polygons is split into arcs at junctions (points where three or more regions meet, plus the raster corners), each arc is simplified once with Douglas–Peucker and both neighbors use the same vertices, so no gaps or overlaps are introduced. An arc whose simplified form would cross or touch another arc, or leave another vertex on the wrong side, is simplified with half the tolerance until it is valid (or kept exact). Use `-no_simplify` for the exact cell edges.
+
 **OPTIONS**
 
 | Option | Description |
@@ -223,6 +227,8 @@ Extracts vector geometry (contours, polygons, or points) from a raster.
 | `-polygonize` | Convert the raster to polygons |
 | `-points` | Convert the raster to points with their value |
 | `-filter <value>` | Only include cells with that value |
+| `-tolerance <dist>` | `-polygonize`: boundary simplification tolerance in map units (default: 1.5 × cell size) |
+| `-no_simplify` | `-polygonize`: keep the exact cell edges (stair-stepped boundaries) |
 
 **EXAMPLES**
 

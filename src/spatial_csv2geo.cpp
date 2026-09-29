@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <regex>
 #include <map>
 #include <set>
 #include <sstream>
@@ -221,12 +222,11 @@ std::string featureToGeoJSON(const Spatial::VectorFeature& feature, const std::s
 
     std::string escaped_value = escapeJSON(value);
 
-    bool is_num = false;
-    try {
-      std::stod(value);
-      is_num = true;
-    } catch (...) {
-    }
+    // Only values that are valid JSON numbers are written unquoted: dates
+    // (2023-10-13), times (09:34:44), codes with leading zeros (01) and
+    // text starting with digits stay as strings.
+    static const std::regex json_number(R"(-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?)");
+    bool is_num = std::regex_match(value, json_number);
 
     if (is_num) {
       result += indent + "    \"" + key + "\": " + value;
