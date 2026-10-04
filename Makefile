@@ -355,14 +355,26 @@ ifeq ($(PLATFORM),mac)
 else
   VENDOR_FLTK_DIR := fltk/linux
   ARCH_FLAG :=
-  # fltk/linux/lib has no libfltk_png.a/libfltk_z.a of its own (unlike the
-  # macOS/Windows vendored copies) -- it was built against the system's
-  # own libpng/zlib, so those come from -lpng -lz below instead.
-  FLTK_LDFLAGS := -L$(VENDOR_FLTK_DIR)/lib -lfltk_images -lfltk_jpeg -lfltk \
-                  -lX11 -lXext -lXft -lXinerama -lXfixes -lXcursor -lXrender -lfontconfig \
-                  -lpng -lz -ldl -lm -lpthread
+  ifneq ($(wildcard $(VENDOR_FLTK_DIR)/lib/libfltk.a),)
+    # fltk/linux/lib has no libfltk_png.a/libfltk_z.a of its own (unlike the
+    # macOS/Windows vendored copies) -- it was built against the system's
+    # own libpng/zlib, so those come from -lpng -lz below instead.
+    FLTK_LDFLAGS := -L$(VENDOR_FLTK_DIR)/lib -lfltk_images -lfltk_jpeg -lfltk \
+                    -lX11 -lXext -lXft -lXinerama -lXfixes -lXcursor -lXrender -lfontconfig \
+                    -lpng -lz -ldl -lm -lpthread
+  else
+    # fltk/ is in .gitignore, so a fresh clone on Linux has no vendored copy.
+    # Fall back to the system FLTK (apt install libfltk1.3-dev) via fltk-config,
+    # which also gets the right jpeg/png/X11 flags for this distro.
+    ifeq ($(shell command -v fltk-config 2>/dev/null),)
+      $(error No vendored FLTK in $(VENDOR_FLTK_DIR)/lib and fltk-config not found. Copy the fltk/ folder here or run: sudo apt install libfltk1.3-dev)
+    endif
+    FLTK_LDFLAGS := $(shell fltk-config --use-images --ldflags)
+    VENDOR_FLTK_DIR := .
+    FLTK_CXXFLAGS_SYS := $(shell fltk-config --cxxflags)
+  endif
 endif
-FLTK_CXXFLAGS := -I$(VENDOR_FLTK_DIR)/include
+FLTK_CXXFLAGS := $(if $(FLTK_CXXFLAGS_SYS),$(FLTK_CXXFLAGS_SYS),-I$(VENDOR_FLTK_DIR)/include)
 CXXFLAGS := $(CXXSTD) $(WARNFLAGS) $(OPTFLAGS) $(ARCH_FLAG) $(ROOT_INCLUDE)
 VIEWER_CXXFLAGS := $(CXXFLAGS) $(FLTK_CXXFLAGS)
 VIEWER_LDFLAGS := $(ARCH_FLAG) $(FLTK_LDFLAGS)
