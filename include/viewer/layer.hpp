@@ -32,6 +32,23 @@ struct Layer {
   std::string rat_color_field;
   std::string rat_label_field;
 
+  // A raster whose RAT has a "color" column (e.g. the palette-indexed
+  // "true color" .asc that spatial_georeference exports, ADR-0006) only
+  // looks right when that column drives the cell colors -- otherwise the
+  // palette indices are painted with the default blue-green-red gradient
+  // ("false color"). Called when a raster is loaded, so it is the initial
+  // choice only: the user can still change it afterwards (spatial_viewer's
+  // layer properties). Does nothing if a color field is already set.
+  void autoSelectRatColorField() {
+    if (type != LayerType::RASTER || !rat_color_field.empty() || !raster_data.has_rat) return;
+    for (const auto& col : raster_data.rat_columns) {
+      if (col == "color") {
+        rat_color_field = col;
+        return;
+      }
+    }
+  }
+
   std::vector<Spatial::StyleRule> style_rules;
 
   bool show_labels = false;

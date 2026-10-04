@@ -5,7 +5,7 @@ A collection of C++17 command-line utilities for spatial (vector and raster) dat
 ## Requirements
 
 - `g++` (Linux/macOS) with C++17 support, or `mingw-w64` for cross-compiling to Windows
-- The 41 stable command-line tools, plus 8 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+- The 42 stable command-line tools, plus 8 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
 - `spatial_viewer` additionally needs FLTK, vendored per platform under `fltk/` (`fltk/linux`, `fltk/mac-arm`, `fltk/mac-intel`, `fltk/windows` -- each with its own `include/` and `lib/`), so a fresh checkout can build it without installing FLTK's dev packages first. See the comments at the top of the `Makefile` for what each platform additionally needs from the system itself (X11 client + fontconfig dev headers on Linux; nothing extra on macOS; `mingw-w64` on whichever machine cross-compiles to Windows).
 
 ## Build
@@ -66,6 +66,7 @@ Running any command with no arguments prints its usage help.
 | `spatial_shp2csv` | Shapefile (.shp/.shx/.dbf) → spatial CSV |
 | `spatial_csv2shp` | Spatial CSV → Shapefile (.shp/.shx/.dbf) |
 | `spatial_xy2csv` | CSV with x/y or lat/lon columns → spatial CSV |
+| `spatial_tiff2asc` | GeoTIFF → Arc/Info ASCII Grid (.asc), with optional `-bbox` window |
 | `spatial_difference` | Difference between vector datasets |
 | `spatial_distance` | Distances between features |
 | `spatial_filter_raster` | Filter raster cells by value |

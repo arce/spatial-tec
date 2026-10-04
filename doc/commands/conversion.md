@@ -322,3 +322,53 @@ spatial_xy2csv puntos.csv puntos_geo.csv -x ESTE -y NORTE -crs EPSG:5367 -drop_x
 **SEE ALSO**
 
 [spatial_csv2geo](#spatial_csv2geo), [spatial_reproject](projection.md#spatial_reproject)
+
+---
+
+## spatial_tiff2asc
+
+**NAME**
+
+`spatial_tiff2asc` — convert a GeoTIFF to an Arc/Info ASCII Grid (`.asc`)
+
+**SYNOPSIS**
+
+```
+spatial_tiff2asc <input.tif> <output.asc> [options]
+spatial_tiff2asc <input.tif> -info
+```
+
+**DESCRIPTION**
+
+Converts one band of a GeoTIFF into the `.asc` raster format every other Spatial TEC raster tool reads. The grid origin and cell size come from the GeoTIFF `ModelPixelScale`/`ModelTiepoint` tags (taking `PixelIsPoint` rasters into account), and NODATA from the `GDAL_NODATA` tag.
+
+Pixels are decoded one row at a time, so a window of a very large raster can be extracted without loading the whole image. This matters for global datasets: a 8640 × 4320 world raster converted in full produces a ~370 MB `.asc` and ~300 MB of memory use in the tools that later read it, while a country-sized `-bbox` produces a few KB.
+
+Supported: classic TIFF (not BigTIFF), little- or big-endian, strips or tiles, no compression / LZW / PackBits, optional horizontal predictor, 8/16/32-bit integer and 32/64-bit float samples, interleaved multi-band files (one band is converted). Unsupported inputs are rejected with an explicit message: Deflate/JPEG/other compression, BigTIFF, rotated GeoTIFFs, non-square cells (the `.asc` header has a single `cellsize`), and separate-plane multi-band files. For Deflate files, re-save first with `gdal_translate -co COMPRESS=LZW in.tif out.tif`.
+
+The `.asc` format does not store a coordinate reference system; if the source is not EPSG:4326 the EPSG code is printed so it can be recorded separately. A TIFF without georeferencing tags is converted with pixel coordinates (`xllcorner 0`, `yllcorner 0`, `cellsize 1`) and a warning.
+
+Integer rasters are written as integers; floating-point values use 7 (Float32) or 15 (Float64) significant digits.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-bbox <xmin> <ymin> <xmax> <ymax>` | Convert only the window covering this extent, in the GeoTIFF's map coordinates. Cells overlapping the extent are included. |
+| `-band <n>` | Band to convert, 1-based (default: 1) |
+| `-nodata <value>` | NODATA value written to the `.asc`. Default: the file's own `GDAL_NODATA`, or `-9999` if it declares none. Source NODATA cells and NaN are rewritten to this value. |
+| `-info` | Print the size, type, compression, cell size, extent, EPSG code and NODATA of the TIFF and exit |
+| `-verbose` | Print the same metadata before converting |
+
+**EXAMPLES**
+
+```
+spatial_tiff2asc tmin.tif -info
+spatial_tiff2asc tmin.tif tmin_cr.asc -bbox -86.0 8.0 -82.5 11.3
+spatial_tiff2asc tmin.tif tmin_cr.asc -bbox -86.0 8.0 -82.5 11.3 -nodata -9999
+spatial_tiff2asc landsat.tif red.asc -band 3
+```
+
+**SEE ALSO**
+
+[spatial_info](info.md#spatial_info), [spatial_calc](raster.md#spatial_calc)

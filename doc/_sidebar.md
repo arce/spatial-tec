@@ -11,6 +11,7 @@
   - [spatial_shp2csv](commands/conversion.md#spatial_shp2csv)
   - [spatial_csv2shp](commands/conversion.md#spatial_csv2shp)
   - [spatial_xy2csv](commands/conversion.md#spatial_xy2csv)
+  - [spatial_tiff2asc](commands/conversion.md#spatial_tiff2asc)
 
 - Vector Processing
   - [spatial_buffer](commands/vector.md#spatial_buffer)

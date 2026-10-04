@@ -900,6 +900,10 @@ class MainWindow : public Fl_Double_Window {
       fl_alert("Could not read ASCII raster file: %s", filename.c_str());
       return;
     }
+    // Rasters exported by spatial_georeference carry a RAT with the real
+    // RGB color of each palette index; use it (instead of the default
+    // gradient) so the backdrop shows the original image colors.
+    layer->autoSelectRatColorField();
 
     background_raster_ = layer;
     if (edit_layer_) {
