@@ -1,0 +1,3 @@
+name = "spatial-tec-info"
+main = "cloudflare/worker.mjs"
+compatibility_date = "2025-01-01"

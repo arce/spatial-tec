@@ -47,6 +47,8 @@
 
 - Networks, LRS & Geocoding
   - [spatial_address](commands/network.md#spatial_address)
+  - [spatial_address_clean](commands/network.md#spatial_address_clean)
+  - [spatial_address_validate](commands/network.md#spatial_address_validate)
   - [spatial_network](commands/network.md#spatial_network)
   - [spatial_shortest_path](commands/network.md#spatial_shortest_path)
   - [spatial_lrs_create](commands/network.md#spatial_lrs_create)

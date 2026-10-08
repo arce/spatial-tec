@@ -103,6 +103,8 @@ VIEWER_HEADERS := $(wildcard include/viewer/*.hpp)
 # it needs its own per-platform FLTK flags and is built by its own rule.
 CONSOLE_PROGRAMS := \
     spatial_address \
+    spatial_address_clean \
+    spatial_address_validate \
     spatial_buffer \
     spatial_calc \
     spatial_calc_vector \
@@ -180,7 +182,6 @@ STUB_PROGRAMS := \
     spatial_lrs_info \
     spatial_network_info \
     spatial_network_service \
-    spatial_address_validate \
     spatial_reverse_geocode
 CONSOLE_PROGRAMS += $(STUB_PROGRAMS)
 ALL_PROGRAMS := $(CONSOLE_PROGRAMS) spatial_viewer spatial_georeference spatial_editor
@@ -434,6 +435,8 @@ help:
 	@echo "  spatial_tiff2asc         - Convert a GeoTIFF to an Arc/Info ASCII Grid (.asc)"
 	@echo "  spatial_colormap         - Generate choropleth color mapping"
 	@echo "  spatial_address          - Geocode addresses by street interpolation"
+	@echo "  spatial_address_clean    - Clean/standardize an address file before geocoding"
+	@echo "  spatial_address_validate - Validate street address ranges / geocoding accuracy"
 	@echo "  spatial_svg              - Generate SVG map from vector data"
 	@echo "  spatial_network          - Build network from street lines"
 	@echo "  spatial_shortest_path    - Find shortest path between two nodes"
@@ -453,7 +456,6 @@ help:
 	@echo "  spatial_lrs_info           - LRS network information, optionally -validate"
 	@echo "  spatial_network_info       - Network information, optionally -validate"
 	@echo "  spatial_network_service    - Service areas / isochrones: -mode alloc|iso"
-	@echo "  spatial_address_validate   - Validate street address ranges"
 	@echo "  spatial_reverse_geocode    - Reverse geocoding (nearest address to a point)"
 	@echo ""
 	@echo "Cross-platform build targets: make linux | mac | macArm | macIntel | windows"

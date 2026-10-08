@@ -53,6 +53,8 @@ Running any command with no arguments prints its usage help.
 |---|---|
 | `spatial_info` | Information and metadata about spatial files |
 | `spatial_address` | Address geocoding by street interpolation |
+| `spatial_address_clean` | Clean and standardize address files before geocoding |
+| `spatial_address_validate` | Validate street address ranges and geocoding accuracy |
 | `spatial_buffer` | Buffers around vector geometries |
 | `spatial_calc` | Map algebra (operations between rasters) |
 | `spatial_centroid` | Centroid calculation |

@@ -13,7 +13,7 @@ namespace Spatial {
     struct VectorFeature {
         enum class GeometryType { POINT, LINESTRING, POLYGON, MULTIPOINT, MULTILINESTRING, MULTIPOLYGON };
 
-        GeometryType type;
+        GeometryType type = GeometryType::POINT;
         std::vector<double> coordinates;
         std::unordered_map<std::string, std::string> attributes;
 

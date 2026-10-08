@@ -1,0 +1,7 @@
+[build]
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  # the .wasm is read at runtime, so make sure it ships with the function
+  included_files = ["wasm/spatial_info.wasm"]

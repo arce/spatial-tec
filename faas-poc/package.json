@@ -1,0 +1,16 @@
+{
+  "name": "spatial-tec-faas-poc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/compare.mjs ../build/spatial_info",
+    "dev:cloudflare": "wrangler dev",
+    "deploy:cloudflare": "wrangler deploy",
+    "dev:netlify": "netlify dev",
+    "deploy:netlify": "netlify deploy --prod"
+  },
+  "devDependencies": {
+    "netlify-cli": "^27.0.0",
+    "wrangler": "^4.0.0"
+  }
+}
