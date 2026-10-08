@@ -26,6 +26,8 @@ The streets file must contain: `street_name`, `left_from`, `left_to`, `right_fro
 
 The addresses file must contain: `id`, `house_number`, `street_name` (optional: `city`, `postal_code`).
 
+Each side of a segment only accepts numbers of the parity of its range when both ends of the range share it (a side declared `100-198` takes even numbers, `101-199` odd ones). Left-side ranges are placed to the left of the digitizing direction and right-side ranges to the right.
+
 `city` and `postal_code` only discard a street segment when **both** files declare a value and the values differ. If the streets file has no such columns, they are ignored.
 
 Street names are compared case-insensitively. By default the match is exact (`Main Street` does not match `Main St`); use `-fuzzy` or run `spatial_address_clean -standardize_streets` first.
@@ -72,7 +74,7 @@ spatial_address streets.csv addresses.csv result.csv -include_segment -include_s
 
 **SEE ALSO**
 
-[spatial_address_clean](#spatial_address_clean), [spatial_address_validate](#spatial_address_validate), [spatial_network](#spatial_network), [spatial_lrs_locate](#spatial_lrs_locate)
+[spatial_address_clean](#spatial_address_clean), [spatial_address_validate](#spatial_address_validate), [spatial_reverse_geocode](#spatial_reverse_geocode), [spatial_network](#spatial_network), [spatial_lrs_locate](#spatial_lrs_locate)
 
 ---
 
@@ -147,6 +149,56 @@ Inverted ranges are always reported. Exit code: `0` no issues, `2` issues found,
 spatial_address_validate streets.csv -check_overlaps -check_gaps -report issues.csv
 spatial_address_validate streets.csv -check_ranges -fix streets_fixed.csv
 spatial_address_validate result.csv -check_accuracy -reference ground_truth.csv
+```
+
+**SEE ALSO**
+
+[spatial_address](#spatial_address)
+
+---
+
+## spatial_reverse_geocode
+
+**NAME**
+
+`spatial_reverse_geocode` — estimate the street address of one or more points
+
+**SYNOPSIS**
+
+```
+spatial_reverse_geocode <streets.csv> <points.csv> <output.csv> [options]
+```
+
+**DESCRIPTION**
+
+The inverse of [spatial_address](#spatial_address). For each query point it finds the nearest street segment, projects the point onto it and interpolates the house number within the range of the side the point lies on (left or right of the digitizing direction). The number respects the parity of the side's range: on a side numbered 101–199 the result is always odd.
+
+The streets file is the same one used by `spatial_address` (`street_name`, `left_from`, `left_to`, `right_from`, `right_to`, `geometry`; optional `id`, `city`, `postal_code`). The points file needs an `id` and either `longitude`,`latitude` (or `x`,`y`) columns or a `POINT` `geometry`.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-max_dist <value>` | Maximum point-to-street distance (default: `50.0`, in coordinate units) |
+| `-addresses <file>` | A `spatial_address` result: adds the nearest already-geocoded address (only rows with status `matched`/`ambiguous`) within `-max_dist` |
+
+**OUTPUT**
+
+Columns: `id`, `longitude`, `latitude`, `status`, `house_number`, `street_name`, `city`, `postal_code`, `side`, `distance` (point to street), `street_segment` (segment `id`, or row number), `measure` (0–1 along the segment), optionally `nearest_address_id`, `nearest_address`, `nearest_address_distance`, and `geometry` (the query point).
+
+| `status` | Meaning |
+|---|---|
+| `matched` | The side where the point lies has a numbering range |
+| `approximate` | The segment only declares the range of the opposite side, which was used |
+| `too_far` | No street within `-max_dist`; address columns are empty |
+
+The estimate is exact only for a point produced by `spatial_address`. Near an intersection or at the joint between two segments of the same street the nearest segment can be ambiguous (the first one wins on ties), and in real data the result is the *probable* number, not a verified postal address.
+
+**EXAMPLES**
+
+```
+spatial_reverse_geocode streets.csv points.csv result.csv
+spatial_reverse_geocode streets.csv points.csv result.csv -max_dist 20 -addresses geocoded.csv
 ```
 
 **SEE ALSO**

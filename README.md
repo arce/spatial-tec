@@ -5,7 +5,7 @@ A collection of C++17 command-line utilities for spatial (vector and raster) dat
 ## Requirements
 
 - `g++` (Linux/macOS) with C++17 support, or `mingw-w64` for cross-compiling to Windows
-- The 42 stable command-line tools, plus 8 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+- The 46 stable command-line tools, plus 6 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
 - `spatial_viewer` additionally needs FLTK, vendored per platform under `fltk/` (`fltk/linux`, `fltk/mac-arm`, `fltk/mac-intel`, `fltk/windows` -- each with its own `include/` and `lib/`), so a fresh checkout can build it without installing FLTK's dev packages first. See the comments at the top of the `Makefile` for what each platform additionally needs from the system itself (X11 client + fontconfig dev headers on Linux; nothing extra on macOS; `mingw-w64` on whichever machine cross-compiles to Windows).
 
 ## Build
@@ -55,6 +55,7 @@ Running any command with no arguments prints its usage help.
 | `spatial_address` | Address geocoding by street interpolation |
 | `spatial_address_clean` | Clean and standardize address files before geocoding |
 | `spatial_address_validate` | Validate street address ranges and geocoding accuracy |
+| `spatial_reverse_geocode` | Reverse geocoding: estimate the address of a point |
 | `spatial_buffer` | Buffers around vector geometries |
 | `spatial_calc` | Map algebra (operations between rasters) |
 | `spatial_centroid` | Centroid calculation |

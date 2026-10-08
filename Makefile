@@ -1,4 +1,4 @@
-# Makefile for Spatial TEC -- builds the 40 console tools (spatial_info,
+# Makefile for Spatial TEC -- builds the 46 console tools (spatial_info,
 # spatial_buffer, ..., spatial_csv2shp) and spatial_viewer (the one FLTK
 # GUI tool) natively for whichever OS `make` is run on (Linux or macOS), or
 # cross-compiled to Windows from Linux/macOS using mingw-w64.
@@ -97,7 +97,7 @@ endif
 # depends on include/viewer/*.hpp (see its own rule further down).
 CORE_HEADERS   := $(wildcard include/core/*.hpp)
 VIEWER_HEADERS := $(wildcard include/viewer/*.hpp)
-# The 40 console tools: plain C++17/STL, no FLTK, no networking, identical
+# The 46 console tools: plain C++17/STL, no FLTK, no networking, identical
 # build recipe on every platform (see the pattern rule in each PLATFORM
 # section below) -- spatial_viewer is deliberately not in this list since
 # it needs its own per-platform FLTK flags and is built by its own rule.
@@ -105,6 +105,7 @@ CONSOLE_PROGRAMS := \
     spatial_address \
     spatial_address_clean \
     spatial_address_validate \
+    spatial_reverse_geocode \
     spatial_buffer \
     spatial_calc \
     spatial_calc_vector \
@@ -168,7 +169,7 @@ CONSOLE_PROGRAMS := \
 # Mercator, sin dependencia de PROJ/GDAL) y doc/commands/projection.md para
 # el detalle de uso.
 #
-# Los 8 restantes no son uno por cada operacion imaginable: donde varias
+# Los 6 restantes no son uno por cada operacion imaginable: donde varias
 # operaciones son variantes cercanas de la misma tarea, comparten un solo
 # binario con un flag -operation/-mode, exactamente como ya hacen
 # spatial_vectorize (-contour/-polygonize/-points), spatial_distance
@@ -181,8 +182,7 @@ STUB_PROGRAMS := \
     spatial_cost \
     spatial_lrs_info \
     spatial_network_info \
-    spatial_network_service \
-    spatial_reverse_geocode
+    spatial_network_service
 CONSOLE_PROGRAMS += $(STUB_PROGRAMS)
 ALL_PROGRAMS := $(CONSOLE_PROGRAMS) spatial_viewer spatial_georeference spatial_editor
 .PHONY: all clean windows linux mac macArm macIntel help $(ALL_PROGRAMS)
@@ -437,6 +437,7 @@ help:
 	@echo "  spatial_address          - Geocode addresses by street interpolation"
 	@echo "  spatial_address_clean    - Clean/standardize an address file before geocoding"
 	@echo "  spatial_address_validate - Validate street address ranges / geocoding accuracy"
+	@echo "  spatial_reverse_geocode  - Reverse geocoding (estimate the address of a point)"
 	@echo "  spatial_svg              - Generate SVG map from vector data"
 	@echo "  spatial_network          - Build network from street lines"
 	@echo "  spatial_shortest_path    - Find shortest path between two nodes"
@@ -456,7 +457,6 @@ help:
 	@echo "  spatial_lrs_info           - LRS network information, optionally -validate"
 	@echo "  spatial_network_info       - Network information, optionally -validate"
 	@echo "  spatial_network_service    - Service areas / isochrones: -mode alloc|iso"
-	@echo "  spatial_reverse_geocode    - Reverse geocoding (nearest address to a point)"
 	@echo ""
 	@echo "Cross-platform build targets: make linux | mac | macArm | macIntel | windows"
 .PHONY: all clean test help

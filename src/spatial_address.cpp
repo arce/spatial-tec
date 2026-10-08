@@ -41,14 +41,26 @@ struct StreetSegment {
     return right_from != 0 || right_to != 0;
   }
 
+  // Un lado acepta un numero si esta dentro de su rango y, cuando los dos
+  // extremos del rango tienen la misma paridad (p. ej. 100-198 o 101-199),
+  // si el numero tiene esa misma paridad. Asi 150 cae en el rango par y 151
+  // en el impar aunque ambos queden numericamente dentro de ambos rangos.
+  static bool sideAccepts(int number, int from, int to) {
+    int lo = std::min(from, to);
+    int hi = std::max(from, to);
+    if (number < lo || number > hi) return false;
+    if ((from % 2) == (to % 2)) return (number % 2) == (from % 2);
+    return true;
+  }
+
   bool getRangeForNumber(int number, int& from, int& to, bool& is_left) const {
-    if (hasLeftRange() && number >= left_from && number <= left_to) {
+    if (hasLeftRange() && sideAccepts(number, left_from, left_to)) {
       from = left_from;
       to = left_to;
       is_left = true;
       return true;
     }
-    if (hasRightRange() && number >= right_from && number <= right_to) {
+    if (hasRightRange() && sideAccepts(number, right_from, right_to)) {
       from = right_from;
       to = right_to;
       is_left = false;
@@ -618,10 +630,9 @@ static GeoResult geocodeAddress(const AddressInput& address,
       }
     }
   }
-  // Convencion previa de la herramienta: la paridad (ajustada por lado) decide el signo.
-  bool is_even = (address.house_number % 2 == 0);
-  if (!is_left) is_even = !is_even;
-  double signed_off = is_even ? off : -off;
+  // El rango izquierdo queda a la izquierda del sentido de digitalizacion y el
+  // derecho a la derecha (la normal izquierda de (dx,dy) es (-dy,dx)).
+  double signed_off = is_left ? off : -off;
 
   px += (-dy) * signed_off;
   py += (dx) * signed_off;
