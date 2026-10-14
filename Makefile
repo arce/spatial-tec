@@ -140,6 +140,9 @@ CONSOLE_PROGRAMS := \
     spatial_lrs_create \
     spatial_lrs_locate \
     spatial_lrs_segment \
+    spatial_lrs_info \
+    spatial_address_validate \
+    spatial_reverse_geocode \
     spatial_interpolate \
     spatial_zonal \
     spatial_reproject
@@ -164,7 +167,16 @@ CONSOLE_PROGRAMS := \
 # Mercator, sin dependencia de PROJ/GDAL) y doc/commands/projection.md para
 # el detalle de uso.
 #
-# Los 8 restantes no son uno por cada operacion imaginable: donde varias
+# spatial_lrs_info tambien se movio: lee el .lrs y reporta estadisticas por
+# ruta (vertices, longitud, rango de medidas, bounding box), y con -validate
+# detecta huecos/traslapes/medidas fuera de rango (ver doc/commands/network.md).
+#
+# spatial_address_validate y spatial_reverse_geocode tambien se movieron
+# (Tutorial 16, geocodificacion): comparten include/core/spatial_streets.hpp con
+# spatial_address -- lectura de la capa de calles, interpolacion de numeros de
+# casa y similitud de nombres.
+#
+# Los 5 restantes no son uno por cada operacion imaginable: donde varias
 # operaciones son variantes cercanas de la misma tarea, comparten un solo
 # binario con un flag -operation/-mode, exactamente como ya hacen
 # spatial_vectorize (-contour/-polygonize/-points), spatial_distance
@@ -175,11 +187,8 @@ STUB_PROGRAMS := \
     spatial_terrain \
     spatial_hydrology \
     spatial_cost \
-    spatial_lrs_info \
     spatial_network_info \
-    spatial_network_service \
-    spatial_address_validate \
-    spatial_reverse_geocode
+    spatial_network_service
 CONSOLE_PROGRAMS += $(STUB_PROGRAMS)
 ALL_PROGRAMS := $(CONSOLE_PROGRAMS) spatial_viewer spatial_georeference spatial_editor
 .PHONY: all clean windows linux mac macArm macIntel help $(ALL_PROGRAMS)
@@ -428,17 +437,17 @@ help:
 	@echo "  spatial_reclass          - Reclassify raster values via a lookup table"
 	@echo "  spatial_rat              - Export/import a raster attribute table: -mode export|import"
 	@echo "  spatial_validate         - Validate/repair vector geometry"
+	@echo "  spatial_address_validate - Validate the numbering ranges of a street layer: -check_ranges/-check_overlaps/-check_gaps"
+	@echo "  spatial_reverse_geocode  - Reverse geocoding: nearest street address of each point"
+	@echo "  spatial_lrs_info         - LRS network information (routes, lengths, M-ranges), optionally -validate"
 	@echo "  spatial_reproject        - Convert vector coordinates between CRS: -from/-to wgs84|crtm05|utm16n|utm17n|webmercator"
 	@echo ""
 	@echo "Placeholder commands (accept documented arguments, not yet implemented):"
 	@echo "  spatial_terrain            - Terrain analysis: -operation slope|aspect|hillshade|curvature"
 	@echo "  spatial_hydrology          - DEM conditioning: -operation fill|flow_direction|flow_accumulation"
 	@echo "  spatial_cost               - Cost-distance analysis: -operation cost|viewshed|corridor"
-	@echo "  spatial_lrs_info           - LRS network information, optionally -validate"
 	@echo "  spatial_network_info       - Network information, optionally -validate"
 	@echo "  spatial_network_service    - Service areas / isochrones: -mode alloc|iso"
-	@echo "  spatial_address_validate   - Validate street address ranges"
-	@echo "  spatial_reverse_geocode    - Reverse geocoding (nearest address to a point)"
 	@echo ""
 	@echo "Cross-platform build targets: make linux | mac | macArm | macIntel | windows"
 .PHONY: all clean test help

@@ -45,11 +45,14 @@
 
 - Networks, LRS & Geocoding
   - [spatial_address](commands/network.md#spatial_address)
+  - [spatial_reverse_geocode](commands/network.md#spatial_reverse_geocode)
+  - [spatial_address_validate](commands/network.md#spatial_address_validate)
   - [spatial_network](commands/network.md#spatial_network)
   - [spatial_shortest_path](commands/network.md#spatial_shortest_path)
   - [spatial_lrs_create](commands/network.md#spatial_lrs_create)
   - [spatial_lrs_locate](commands/network.md#spatial_lrs_locate)
   - [spatial_lrs_segment](commands/network.md#spatial_lrs_segment)
+  - [spatial_lrs_info](commands/network.md#spatial_lrs_info)
 
 - Cartography & Visualization
   - [spatial_colormap](commands/cartography.md#spatial_colormap)
