@@ -10,6 +10,8 @@
   - [spatial_csv2osm](commands/conversion.md#spatial_csv2osm)
   - [spatial_shp2csv](commands/conversion.md#spatial_shp2csv)
   - [spatial_csv2shp](commands/conversion.md#spatial_csv2shp)
+  - [spatial_xy2csv](commands/conversion.md#spatial_xy2csv)
+  - [spatial_tiff2asc](commands/conversion.md#spatial_tiff2asc)
 
 - Vector Processing
   - [spatial_buffer](commands/vector.md#spatial_buffer)
@@ -45,8 +47,14 @@
 
 - Networks, LRS & Geocoding
   - [spatial_address](commands/network.md#spatial_address)
+<<<<<<< HEAD
   - [spatial_reverse_geocode](commands/network.md#spatial_reverse_geocode)
   - [spatial_address_validate](commands/network.md#spatial_address_validate)
+=======
+  - [spatial_address_clean](commands/network.md#spatial_address_clean)
+  - [spatial_address_validate](commands/network.md#spatial_address_validate)
+  - [spatial_reverse_geocode](commands/network.md#spatial_reverse_geocode)
+>>>>>>> 9612af9c91ae858debce8b24c2c80f22bd6c523e
   - [spatial_network](commands/network.md#spatial_network)
   - [spatial_shortest_path](commands/network.md#spatial_shortest_path)
   - [spatial_lrs_create](commands/network.md#spatial_lrs_create)

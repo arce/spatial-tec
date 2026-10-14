@@ -374,10 +374,17 @@ int main(int argc, char* argv[]) {
       mode = "self";
     } else if (arg == "-threshold" && i + 1 < argc) {
       threshold = std::stod(argv[++i]);
+    } else if (arg.size() > 1 && arg[0] == '-') {
+      std::cerr << "Error: Unknown option or missing value: " << arg << "\n\n";
+      printUsage();
+      return 1;
     } else if (input_file.empty()) {
       input_file = arg;
-    } else {
+    } else if (output_file.empty()) {
       output_file = arg;
+    } else {
+      std::cerr << "Error: Unexpected argument: " << arg << "\n";
+      return 1;
     }
   }
 

@@ -398,6 +398,7 @@ private:
     layer->fill = true;
     layer->opacity = 0.6;
     applySidecarStyle(*layer, filename);
+    layer->autoSelectRatColorField();
 
     layers_.insert(layers_.begin(), layer);
     current_layer_index_ = 0;

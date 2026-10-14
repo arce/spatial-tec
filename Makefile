@@ -1,4 +1,4 @@
-# Makefile for Spatial TEC -- builds the 40 console tools (spatial_info,
+# Makefile for Spatial TEC -- builds the 46 console tools (spatial_info,
 # spatial_buffer, ..., spatial_csv2shp) and spatial_viewer (the one FLTK
 # GUI tool) natively for whichever OS `make` is run on (Linux or macOS), or
 # cross-compiled to Windows from Linux/macOS using mingw-w64.
@@ -97,12 +97,15 @@ endif
 # depends on include/viewer/*.hpp (see its own rule further down).
 CORE_HEADERS   := $(wildcard include/core/*.hpp)
 VIEWER_HEADERS := $(wildcard include/viewer/*.hpp)
-# The 40 console tools: plain C++17/STL, no FLTK, no networking, identical
+# The 46 console tools: plain C++17/STL, no FLTK, no networking, identical
 # build recipe on every platform (see the pattern rule in each PLATFORM
 # section below) -- spatial_viewer is deliberately not in this list since
 # it needs its own per-platform FLTK flags and is built by its own rule.
 CONSOLE_PROGRAMS := \
     spatial_address \
+    spatial_address_clean \
+    spatial_address_validate \
+    spatial_reverse_geocode \
     spatial_buffer \
     spatial_calc \
     spatial_calc_vector \
@@ -133,6 +136,8 @@ CONSOLE_PROGRAMS := \
     spatial_csv2osm \
     spatial_shp2csv \
     spatial_csv2shp \
+    spatial_xy2csv \
+    spatial_tiff2asc \
     spatial_colormap \
     spatial_network \
     spatial_shortest_path \
@@ -167,6 +172,7 @@ CONSOLE_PROGRAMS := \
 # Mercator, sin dependencia de PROJ/GDAL) y doc/commands/projection.md para
 # el detalle de uso.
 #
+<<<<<<< HEAD
 # spatial_lrs_info tambien se movio: lee el .lrs y reporta estadisticas por
 # ruta (vertices, longitud, rango de medidas, bounding box), y con -validate
 # detecta huecos/traslapes/medidas fuera de rango (ver doc/commands/network.md).
@@ -177,6 +183,9 @@ CONSOLE_PROGRAMS := \
 # casa y similitud de nombres.
 #
 # Los 5 restantes no son uno por cada operacion imaginable: donde varias
+=======
+# Los 6 restantes no son uno por cada operacion imaginable: donde varias
+>>>>>>> 9612af9c91ae858debce8b24c2c80f22bd6c523e
 # operaciones son variantes cercanas de la misma tarea, comparten un solo
 # binario con un flag -operation/-mode, exactamente como ya hacen
 # spatial_vectorize (-contour/-polygonize/-points), spatial_distance
@@ -362,14 +371,26 @@ ifeq ($(PLATFORM),mac)
 else
   VENDOR_FLTK_DIR := fltk/linux
   ARCH_FLAG :=
-  # fltk/linux/lib has no libfltk_png.a/libfltk_z.a of its own (unlike the
-  # macOS/Windows vendored copies) -- it was built against the system's
-  # own libpng/zlib, so those come from -lpng -lz below instead.
-  FLTK_LDFLAGS := -L$(VENDOR_FLTK_DIR)/lib -lfltk_images -lfltk_jpeg -lfltk \
-                  -lX11 -lXext -lXft -lXinerama -lXfixes -lXcursor -lXrender -lfontconfig \
-                  -lpng -lz -ldl -lm -lpthread
+  ifneq ($(wildcard $(VENDOR_FLTK_DIR)/lib/libfltk.a),)
+    # fltk/linux/lib has no libfltk_png.a/libfltk_z.a of its own (unlike the
+    # macOS/Windows vendored copies) -- it was built against the system's
+    # own libpng/zlib, so those come from -lpng -lz below instead.
+    FLTK_LDFLAGS := -L$(VENDOR_FLTK_DIR)/lib -lfltk_images -lfltk_jpeg -lfltk \
+                    -lX11 -lXext -lXft -lXinerama -lXfixes -lXcursor -lXrender -lfontconfig \
+                    -lpng -lz -ldl -lm -lpthread
+  else
+    # fltk/ is in .gitignore, so a fresh clone on Linux has no vendored copy.
+    # Fall back to the system FLTK (apt install libfltk1.3-dev) via fltk-config,
+    # which also gets the right jpeg/png/X11 flags for this distro.
+    ifeq ($(shell command -v fltk-config 2>/dev/null),)
+      $(error No vendored FLTK in $(VENDOR_FLTK_DIR)/lib and fltk-config not found. Copy the fltk/ folder here or run: sudo apt install libfltk1.3-dev)
+    endif
+    FLTK_LDFLAGS := $(shell fltk-config --use-images --ldflags)
+    VENDOR_FLTK_DIR := .
+    FLTK_CXXFLAGS_SYS := $(shell fltk-config --cxxflags)
+  endif
 endif
-FLTK_CXXFLAGS := -I$(VENDOR_FLTK_DIR)/include
+FLTK_CXXFLAGS := $(if $(FLTK_CXXFLAGS_SYS),$(FLTK_CXXFLAGS_SYS),-I$(VENDOR_FLTK_DIR)/include)
 CXXFLAGS := $(CXXSTD) $(WARNFLAGS) $(OPTFLAGS) $(ARCH_FLAG) $(ROOT_INCLUDE)
 VIEWER_CXXFLAGS := $(CXXFLAGS) $(FLTK_CXXFLAGS)
 VIEWER_LDFLAGS := $(ARCH_FLAG) $(FLTK_LDFLAGS)
@@ -425,8 +446,13 @@ help:
 	@echo "  spatial_csv2osm          - Convert spatial CSV to OpenStreetMap XML"
 	@echo "  spatial_shp2csv          - Convert a Shapefile (.shp/.shx/.dbf) to spatial CSV"
 	@echo "  spatial_csv2shp          - Convert spatial CSV to Shapefile (.shp/.shx/.dbf)"
+	@echo "  spatial_xy2csv           - Convert a CSV with x/y or lat/lon columns to spatial CSV"
+	@echo "  spatial_tiff2asc         - Convert a GeoTIFF to an Arc/Info ASCII Grid (.asc)"
 	@echo "  spatial_colormap         - Generate choropleth color mapping"
 	@echo "  spatial_address          - Geocode addresses by street interpolation"
+	@echo "  spatial_address_clean    - Clean/standardize an address file before geocoding"
+	@echo "  spatial_address_validate - Validate street address ranges / geocoding accuracy"
+	@echo "  spatial_reverse_geocode  - Reverse geocoding (estimate the address of a point)"
 	@echo "  spatial_svg              - Generate SVG map from vector data"
 	@echo "  spatial_network          - Build network from street lines"
 	@echo "  spatial_shortest_path    - Find shortest path between two nodes"

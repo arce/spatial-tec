@@ -5,7 +5,11 @@ A collection of C++17 command-line utilities for spatial (vector and raster) dat
 ## Requirements
 
 - `g++` (Linux/macOS) with C++17 support, or `mingw-w64` for cross-compiling to Windows
+<<<<<<< HEAD
 - The 44 stable command-line tools, plus 5 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+=======
+- The 46 stable command-line tools, plus 6 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+>>>>>>> 9612af9c91ae858debce8b24c2c80f22bd6c523e
 - `spatial_viewer` additionally needs FLTK, vendored per platform under `fltk/` (`fltk/linux`, `fltk/mac-arm`, `fltk/mac-intel`, `fltk/windows` -- each with its own `include/` and `lib/`), so a fresh checkout can build it without installing FLTK's dev packages first. See the comments at the top of the `Makefile` for what each platform additionally needs from the system itself (X11 client + fontconfig dev headers on Linux; nothing extra on macOS; `mingw-w64` on whichever machine cross-compiles to Windows).
 
 ## Build
@@ -53,6 +57,9 @@ Running any command with no arguments prints its usage help.
 |---|---|
 | `spatial_info` | Information and metadata about spatial files |
 | `spatial_address` | Address geocoding by street interpolation |
+| `spatial_address_clean` | Clean and standardize address files before geocoding |
+| `spatial_address_validate` | Validate street address ranges and geocoding accuracy |
+| `spatial_reverse_geocode` | Reverse geocoding: estimate the address of a point |
 | `spatial_buffer` | Buffers around vector geometries |
 | `spatial_calc` | Map algebra (operations between rasters) |
 | `spatial_centroid` | Centroid calculation |
@@ -65,6 +72,8 @@ Running any command with no arguments prints its usage help.
 | `spatial_csv2osm` | Spatial CSV → OpenStreetMap XML |
 | `spatial_shp2csv` | Shapefile (.shp/.shx/.dbf) → spatial CSV |
 | `spatial_csv2shp` | Spatial CSV → Shapefile (.shp/.shx/.dbf) |
+| `spatial_xy2csv` | CSV with x/y or lat/lon columns → spatial CSV |
+| `spatial_tiff2asc` | GeoTIFF → Arc/Info ASCII Grid (.asc), with optional `-bbox` window |
 | `spatial_difference` | Difference between vector datasets |
 | `spatial_distance` | Distances between features |
 | `spatial_filter_raster` | Filter raster cells by value |

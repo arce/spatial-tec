@@ -270,3 +270,105 @@ spatial_csv2shp parcels.csv parcels.shp -exclude internal_id
 **SEE ALSO**
 
 [spatial_shp2csv](#spatial_shp2csv)
+
+---
+
+## spatial_xy2csv
+
+**NAME**
+
+`spatial_xy2csv` — convert a CSV with coordinate columns (x/y or longitude/latitude) to spatial CSV
+
+**SYNOPSIS**
+
+```
+spatial_xy2csv <input.csv> <output.csv> [options]
+```
+
+**DESCRIPTION**
+
+Adds a WKT `geometry` column with `POINT(x y)` to a plain CSV table, built from two coordinate columns, so the table can be used by the rest of the vector tools. All original rows and columns are kept (unless `-drop_xy` is given), in the same order.
+
+If `-x`/`-y` are not given, the columns are detected by name (case-insensitive): X from `lon`, `long`, `longitude`, `longitud`, `lng`, then `x`, `este`, `easting`; Y from `lat`, `latitude`, `latitud`, then `y`, `norte`, `northing`. WKT always uses the order X Y, so longitude goes first.
+
+The input may use `,`, `;` or tab as separator (auto-detected from the header) and a decimal comma in the coordinates (common in spreadsheets exported with Spanish regional settings); coordinates are written with a decimal point, both in the geometry and in the original coordinate columns. Quoted fields (including `""` escapes and line breaks), a UTF-8 BOM and CRLF line endings are handled. The output is always comma-separated.
+
+Rows with empty or non-numeric coordinates are skipped with a warning that includes the row number (the first 10, or all of them with `-verbose`). When the coordinate columns are longitude/latitude, rows outside ±180 / ±90 are skipped too, and a hint is printed if latitude and longitude appear to be swapped.
+
+The CRS is written to the header as `# CRS: ...`: the `-crs` value, or the CRS already present in the input header, or `EPSG:4326` when longitude/latitude columns are used. With other column names (e.g. `ESTE`/`NORTE` in CRTM05) no CRS is assumed; pass `-crs`.
+
+An input that already has a `geometry`, `geom` or `wkt` column is rejected, since it is already a spatial CSV.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-x <col>` | X / longitude column (default: auto-detected) |
+| `-y <col>` | Y / latitude column (default: auto-detected) |
+| `-crs <value>` | CRS for the header (default: input CRS, or `EPSG:4326` for lon/lat columns) |
+| `-delimiter <char>` | Input separator: `,`, `;` or `tab` (default: auto-detected) |
+| `-geometry_column <name>` | Name of the new geometry column (default: `geometry`) |
+| `-drop_xy` | Remove the coordinate columns from the output |
+| `-verbose` | List every skipped row |
+
+**EXAMPLES**
+
+```
+spatial_xy2csv sismos.csv sismos_geo.csv
+spatial_xy2csv sismos.csv sismos_geo.csv -x Longitud -y Latitud
+spatial_xy2csv puntos.csv puntos_geo.csv -x ESTE -y NORTE -crs EPSG:5367 -drop_xy
+```
+
+**SEE ALSO**
+
+[spatial_csv2geo](#spatial_csv2geo), [spatial_reproject](projection.md#spatial_reproject)
+
+---
+
+## spatial_tiff2asc
+
+**NAME**
+
+`spatial_tiff2asc` — convert a GeoTIFF to an Arc/Info ASCII Grid (`.asc`)
+
+**SYNOPSIS**
+
+```
+spatial_tiff2asc <input.tif> <output.asc> [options]
+spatial_tiff2asc <input.tif> -info
+```
+
+**DESCRIPTION**
+
+Converts one band of a GeoTIFF into the `.asc` raster format every other Spatial TEC raster tool reads. The grid origin and cell size come from the GeoTIFF `ModelPixelScale`/`ModelTiepoint` tags (taking `PixelIsPoint` rasters into account), and NODATA from the `GDAL_NODATA` tag.
+
+Pixels are decoded one row at a time, so a window of a very large raster can be extracted without loading the whole image. This matters for global datasets: a 8640 × 4320 world raster converted in full produces a ~370 MB `.asc` and ~300 MB of memory use in the tools that later read it, while a country-sized `-bbox` produces a few KB.
+
+Supported: classic TIFF (not BigTIFF), little- or big-endian, strips or tiles, no compression / LZW / PackBits, optional horizontal predictor, 8/16/32-bit integer and 32/64-bit float samples, interleaved multi-band files (one band is converted). Unsupported inputs are rejected with an explicit message: Deflate/JPEG/other compression, BigTIFF, rotated GeoTIFFs, non-square cells (the `.asc` header has a single `cellsize`), and separate-plane multi-band files. For Deflate files, re-save first with `gdal_translate -co COMPRESS=LZW in.tif out.tif`.
+
+The `.asc` format does not store a coordinate reference system; if the source is not EPSG:4326 the EPSG code is printed so it can be recorded separately. A TIFF without georeferencing tags is converted with pixel coordinates (`xllcorner 0`, `yllcorner 0`, `cellsize 1`) and a warning.
+
+Integer rasters are written as integers; floating-point values use 7 (Float32) or 15 (Float64) significant digits.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-bbox <xmin> <ymin> <xmax> <ymax>` | Convert only the window covering this extent, in the GeoTIFF's map coordinates. Cells overlapping the extent are included. |
+| `-band <n>` | Band to convert, 1-based (default: 1) |
+| `-nodata <value>` | NODATA value written to the `.asc`. Default: the file's own `GDAL_NODATA`, or `-9999` if it declares none. Source NODATA cells and NaN are rewritten to this value. |
+| `-info` | Print the size, type, compression, cell size, extent, EPSG code and NODATA of the TIFF and exit |
+| `-verbose` | Print the same metadata before converting |
+
+**EXAMPLES**
+
+```
+spatial_tiff2asc tmin.tif -info
+spatial_tiff2asc tmin.tif tmin_cr.asc -bbox -86.0 8.0 -82.5 11.3
+spatial_tiff2asc tmin.tif tmin_cr.asc -bbox -86.0 8.0 -82.5 11.3 -nodata -9999
+spatial_tiff2asc landsat.tif red.asc -band 3
+```
+
+**SEE ALSO**
+
+[spatial_info](info.md#spatial_info), [spatial_calc](raster.md#spatial_calc)

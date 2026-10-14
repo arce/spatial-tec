@@ -134,12 +134,17 @@ std::vector<Point2D> bufferPolygon(const std::vector<Point2D>& polygon, double d
     Point2D normal_next = dir_next.perpendicular();
 
     Point2D bisector = (normal_prev + normal_next).normalized();
-    double scale =
-        distance /
-        std::max(0.1,
-                 std::abs(std::sin(
-                     M_PI - std::acos((dir_prev.x * (-dir_next.x) + dir_prev.y * (-dir_next.y)) /
-                                      (dir_prev.length() * dir_next.length())))));
+    
+    double denom = dir_prev.length() * dir_next.length();
+    double cos_val = 0.0;
+    if (denom > 1e-12) {
+      cos_val = (dir_prev.x * (-dir_next.x) + dir_prev.y * (-dir_next.y)) / denom;
+    }
+    // Corregido: se acota el valor de cos_val para evitar NaN en std::acos por imprecisiones de punto flotante
+    cos_val = std::clamp(cos_val, -1.0, 1.0);
+
+    double sin_val = std::sin(M_PI - std::acos(cos_val));
+    double scale = distance / std::max(0.1, std::abs(sin_val));
 
     if (std::isfinite(scale) && scale > 0) {
       Point2D new_point = p + bisector * scale * (distance > 0 ? 1 : -1);
@@ -224,7 +229,8 @@ void printUsage() {
   std::cerr << "  -segments <n>       Number of segments for circles (default: 36)\n";
   std::cerr << "  -cap <style>        Cap style: round (default) or flat\n";
   std::cerr << "  -dissolve           Dissolve overlapping buffers\n";
-  std::cerr << "\nExamples:\n";
+  std::cerr << "  -h, -help           Display this help message\n\n";
+  std::cerr << "Examples:\n";
   std::cerr << "  spatial_buffer cities.csv buffers.csv -distance 10\n";
   std::cerr << "  spatial_buffer roads.csv corridors.csv -distance 100 -units meters\n";
   std::cerr << "  spatial_buffer zones.csv inner.csv -distance -5\n";
@@ -232,6 +238,12 @@ void printUsage() {
 }
 
 int main(int argc, char* argv[]) {
+  // Corregido: soporte explícito para banderas de ayuda
+  if (argc == 2 && (std::string(argv[1]) == "-h" || std::string(argv[1]) == "-help")) {
+    printUsage();
+    return 0;
+  }
+
   if (argc < 5) {
     printUsage();
     return 1;
@@ -259,10 +271,20 @@ int main(int argc, char* argv[]) {
       cap_round = (cap == "round");
     } else if (arg == "-dissolve") {
       dissolve = true;
+    } else if (arg == "-h" || arg == "-help") {
+      printUsage();
+      return 0;
+    } else if (arg.size() > 1 && arg[0] == '-') {
+      std::cerr << "Error: Unknown option or missing value: " << arg << "\n\n";
+      printUsage();
+      return 1;
     } else if (input_file.empty()) {
       input_file = arg;
-    } else {
+    } else if (output_file.empty()) {
       output_file = arg;
+    } else {
+      std::cerr << "Error: Unexpected argument: " << arg << "\n";
+      return 1;
     }
   }
 
@@ -377,4 +399,3 @@ int main(int argc, char* argv[]) {
 
   return 0;
 }
-
