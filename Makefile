@@ -146,6 +146,7 @@ CONSOLE_PROGRAMS := \
     spatial_lrs_locate \
     spatial_lrs_segment \
     spatial_lrs_info \
+    spatial_lrs_calibrate \
     spatial_address_validate \
     spatial_reverse_geocode \
     spatial_interpolate \
@@ -462,6 +463,7 @@ help:
 	@echo "  spatial_address_validate - Validate the numbering ranges of a street layer: -check_ranges/-check_overlaps/-check_gaps"
 	@echo "  spatial_reverse_geocode  - Reverse geocoding: nearest street address of each point"
 	@echo "  spatial_lrs_info         - LRS network information (routes, lengths, M-ranges), optionally -validate"
+	@echo "  spatial_lrs_calibrate    - Calibrate LRS measures using points of known measure (mileposts)"
 	@echo "  spatial_reproject        - Convert vector coordinates between CRS: -from/-to wgs84|crtm05|utm16n|utm17n|webmercator"
 	@echo ""
 	@echo "Placeholder commands (accept documented arguments, not yet implemented):"

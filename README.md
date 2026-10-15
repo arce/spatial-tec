@@ -94,6 +94,7 @@ Running any command with no arguments prints its usage help.
 | `spatial_lrs_locate` | Locate point events along an LRS network |
 | `spatial_lrs_segment` | Build segments from linear events over an LRS |
 | `spatial_lrs_info` | Inspect and validate an LRS network (routes, lengths, M-ranges, gaps/overlaps) |
+| `spatial_lrs_calibrate` | Calibrate LRS measures using points of known measure (mileposts) |
 | `spatial_svg` | Generate SVG maps |
 | `spatial_viewer` | Interactive graphical layer viewer |
 | `spatial_georeference` | Georeference a PNG/JPEG image via control points, export as `.asc` |
