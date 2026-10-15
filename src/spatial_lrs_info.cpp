@@ -25,8 +25,13 @@ struct LRSVertex {
 struct LRSRoute {
   std::string route_id;
   std::vector<LRSVertex> vertices;
+<<<<<<< HEAD
   double declared_length;  // total_length column of the @ROUTES section
   bool calibrated = false;  // listed in the @CALIBRATED section (written by spatial_lrs_calibrate)
+=======
+  double declared_length;  // total_length column of the @ROUTES section (geometric length)
+  bool calibrated = false;  // set by spatial_lrs_calibrate
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
 };
 
 struct LRSFile {
@@ -56,10 +61,11 @@ void printUsage() {
   std::cerr << "  TOO_FEW_VERTICES       route has fewer than 2 vertices\n";
   std::cerr << "  NEGATIVE_MEASURE       a vertex has a negative measure\n";
   std::cerr << "  MEASURE_OVERLAP        measure does not increase (decreases or repeats)\n";
-  std::cerr << "  MEASURE_GAP            measure grows more than the distance between vertices\n";
-  std::cerr << "  MEASURE_SHORT          measure grows less than the distance between vertices\n";
-  std::cerr << "  LENGTH_MISMATCH        last measure differs from the declared route length\n";
-  std::cerr << "  START_NOT_ZERO         (warning) first measure is not 0\n";
+  std::cerr << "  MEASURE_GAP            measure grows more than the route's measure/distance ratio allows\n";
+  std::cerr << "  MEASURE_SHORT          measure grows less than the route's measure/distance ratio allows\n";
+  std::cerr << "                         (not checked on routes calibrated with spatial_lrs_calibrate)\n";
+  std::cerr << "  LENGTH_MISMATCH        declared route length differs from the length of the geometry\n";
+  std::cerr << "  START_NOT_ZERO         (warning) first measure is not 0 (not checked on calibrated routes)\n";
   std::cerr << "  ZERO_LENGTH_SEGMENT    (warning) two consecutive vertices share the same position\n\n";
   std::cerr << "Routes calibrated with spatial_lrs_calibrate are marked in the table; for them the\n";
   std::cerr << "ratio measure/distance may change between calibration points, so MEASURE_GAP,\n";
@@ -119,6 +125,7 @@ static bool loadLRS(const std::string& filename, LRSFile& out) {
 
     LRSRoute route;
     route.route_id = parts[0];
+    route.calibrated = parts.size() >= 5 && trim(parts[4]) == "1";
     try {
       route.declared_length = std::stod(parts[2]);
     } catch (...) {
@@ -156,6 +163,7 @@ static double dist(const LRSVertex& a, const LRSVertex& b) {
   return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 }
 
+<<<<<<< HEAD
 // Length of the route geometry. For routes that were not calibrated the
 // measures are distances along the geometry, so it equals last M - first M.
 static double routeLength(const LRSRoute& r) {
@@ -163,6 +171,9 @@ static double routeLength(const LRSRoute& r) {
     return 0;
   if (!r.calibrated)
     return r.vertices.back().m - r.vertices.front().m;
+=======
+static double geomLength(const LRSRoute& r) {
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
   double len = 0;
   for (size_t i = 1; i < r.vertices.size(); ++i)
     len += dist(r.vertices[i - 1], r.vertices[i]);
@@ -193,6 +204,14 @@ static void validateRoutes(const LRSFile& lrs, std::vector<Issue>& issues) {
         issues.push_back({r.route_id, (int)i + 1, "ERROR", "NEGATIVE_MEASURE", "measure " + num(v[i].m)});
     }
 
+<<<<<<< HEAD
+=======
+    double glen = geomLength(r);
+    double span = v.back().m - v.front().m;
+    double scale = (glen > 1e-12 && span > 0) ? span / glen : 1.0;  // measure units per distance unit
+    double tol = MEASURE_TOL * std::max(1.0, scale);
+
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
     if (!r.calibrated && std::fabs(v.front().m) > MEASURE_TOL)
       issues.push_back({r.route_id, 1, "WARNING", "START_NOT_ZERO", "first measure is " + num(v.front().m)});
 
@@ -208,21 +227,31 @@ static void validateRoutes(const LRSFile& lrs, std::vector<Issue>& issues) {
       if (dm <= 0) {
         issues.push_back({r.route_id, (int)i + 1, "ERROR", "MEASURE_OVERLAP",
                           where + "measure goes from " + num(v[i - 1].m) + " to " + num(v[i].m)});
+<<<<<<< HEAD
       } else if (r.calibrated) {
         // calibrated routes: the ratio measure/distance changes between calibration points
       } else if (dm - d > MEASURE_TOL) {
+=======
+      } else if (!r.calibrated && dm - d * scale > tol) {
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
         issues.push_back({r.route_id, (int)i + 1, "ERROR", "MEASURE_GAP",
-                          where + "measure grows " + num(dm) + " over a distance of " + num(d)});
-      } else if (d - dm > MEASURE_TOL) {
+                          where + "measure grows " + num(dm) + " over a distance of " + num(d) +
+                              " (expected " + num(d * scale) + ")"});
+      } else if (!r.calibrated && d * scale - dm > tol) {
         issues.push_back({r.route_id, (int)i + 1, "ERROR", "MEASURE_SHORT",
-                          where + "measure grows " + num(dm) + " over a distance of " + num(d)});
+                          where + "measure grows " + num(dm) + " over a distance of " + num(d) +
+                              " (expected " + num(d * scale) + ")"});
       }
     }
 
+<<<<<<< HEAD
     double len = v.back().m - v.front().m;
     if (!r.calibrated && !std::isnan(r.declared_length) && std::fabs(len - r.declared_length) > MEASURE_TOL)
+=======
+    if (!std::isnan(r.declared_length) && std::fabs(glen - r.declared_length) > MEASURE_TOL)
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
       issues.push_back({r.route_id, 0, "ERROR", "LENGTH_MISMATCH",
-                        "last measure gives length " + num(len) + " but declared length is " + num(r.declared_length)});
+                        "geometry length is " + num(glen) + " but declared length is " + num(r.declared_length)});
   }
 }
 
@@ -304,7 +333,11 @@ int main(int argc, char* argv[]) {
   size_t total_vertices = 0;
   for (const auto& r : lrs.routes) {
     total_vertices += r.vertices.size();
+<<<<<<< HEAD
     total_len += routeLength(r);
+=======
+    total_len += geomLength(r);
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
     for (const auto& v : r.vertices) {
       minx = std::min(minx, v.x);
       maxx = std::max(maxx, v.x);
@@ -329,7 +362,8 @@ int main(int argc, char* argv[]) {
     if (!selected->vertices.empty())
       std::cout << "  M-range: " << num(selected->vertices.front().m, 2) << " - "
                 << num(selected->vertices.back().m, 2) << "\n";
-    std::cout << "  Declared length: " << num(selected->declared_length, 4) << "\n\n";
+    std::cout << "  Length: " << num(geomLength(*selected), 4) << "\n";
+    std::cout << "  Calibrated: " << (selected->calibrated ? "yes" : "no") << "\n\n";
     std::cout << "  #      X            Y            M\n";
     for (size_t i = 0; i < selected->vertices.size(); ++i) {
       const auto& v = selected->vertices[i];
@@ -337,21 +371,31 @@ int main(int argc, char* argv[]) {
                 << "  " << std::setw(11) << num(v.y, 4) << "  " << std::setw(11) << num(v.m, 4) << "\n";
     }
   } else {
+<<<<<<< HEAD
     bool any_calibrated = !lrs.calibrated_ids.empty();
     std::cout << "\n  Route   Vertices   Length        M-range" << (any_calibrated ? "            Calibrated" : "")
               << "\n";
     for (const auto& r : lrs.routes) {
       double len = routeLength(r);
+=======
+    std::cout << "\n  Route   Vertices   Length        M-range            Calibrated\n";
+    for (const auto& r : lrs.routes) {
+      double len = geomLength(r);
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
       std::cout << "  " << std::left << std::setw(8) << r.route_id << std::setw(11) << r.vertices.size()
                 << std::setw(14) << num(len, 4);
       std::string range;
       if (!r.vertices.empty())
         range = num(r.vertices.front().m, 2) + " - " + num(r.vertices.back().m, 2);
+<<<<<<< HEAD
       if (any_calibrated)
         std::cout << std::setw(19) << range << (r.calibrated ? "yes" : "no");
       else
         std::cout << range;
       std::cout << "\n";
+=======
+      std::cout << std::setw(19) << range << (r.calibrated ? "yes" : "no") << "\n";
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
     }
   }
 

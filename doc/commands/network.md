@@ -329,29 +329,95 @@ spatial_lrs_segment <network.lrs> <events.csv> <output.csv> [options]
 
 **DESCRIPTION**
 
-Generates line segment geometry from linear events defined by a measure range (`from_measure`/`to_measure`) over an LRS network.
+Generates line segment geometry from linear events defined by a measure range (`from_measure`/`to_measure`) over an LRS network. It can also aggregate the events first (concatenate and/or dissolve) and keep only some of their attribute columns, which together allow splitting a multi-attribute event table into one table per attribute.
 
-The events CSV must contain: `id`, `route_id`, `from_measure`, `to_measure`; optionally `offset`.
+The events CSV must contain: `route_id`, `from_measure`, `to_measure`; optionally `id`, `offset` and any number of attribute columns. Events whose measures exceed the measure range of the route are clipped to it; events with `from_measure` greater than `to_measure`, an unknown route or no part on the route are reported as errors.
+
+**Merging events.** `-merge`, `-merge_by` and `-mode` merge events of the same route:
+
+- *Concatenate*: events where the end of one coincides with the start of the next.
+- *Dissolve*: events that overlap.
+- With `-merge_by`, only events with the same value in all the given columns are merged.
+
+When events are merged, the output events are numbered 1, 2, 3… in route and measure order, and the column `source_event` lists the original ids separated by `;`. The offset of a merged event is the mean of the offsets. An attribute that differs between the merged events and is not in `-merge_by` is left empty.
+
+**Splitting a table by attribute.** `-keep` leaves only the given attribute columns in the output. Combined with `-merge_by` on the same columns, it produces the event table of a single attribute with its redundant events concatenated; running the command once per attribute splits the original table.
 
 **OPTIONS**
 
 | Option | Description |
 |---|---|
-| `-offset <value>` | Default lateral offset |
-| `-merge` | Merge overlapping/adjacent segments |
+| `-offset <value>` | Default lateral offset, used for events without their own `offset` |
+| `-merge` | Merge events of the same route that touch or overlap |
+| `-merge_by <f1,f2,...>` | Merge only events with the same value in all these columns (implies `-merge`) |
+| `-mode <mode>` | `concatenate` (adjacent only), `dissolve` (overlapping only) or `both` (default); implies `-merge` |
+| `-keep <f1,f2,...>` | Keep only these attribute columns in the output |
 | `-verbose` | Show detailed information |
+
+The output has the columns `id`, `route_id`, `from_measure`, `to_measure`, `offset`, `length` (length of the segment geometry, before applying the offset), the attribute columns, `source_event` and `geometry`.
 
 **EXAMPLES**
 
 ```
 spatial_lrs_segment lrs_network.lrs conditions.csv segments.csv -offset 3
 spatial_lrs_segment lrs_network.lrs conditions.csv segments.csv -merge
+spatial_lrs_segment lrs_network.lrs pavement.csv material.csv -keep material -merge_by material -mode concatenate
+spatial_lrs_segment lrs_network.lrs reports.csv reports_dissolved.csv -merge_by type -mode dissolve
 ```
 
 **SEE ALSO**
 
-[spatial_lrs_create](#spatial_lrs_create), [spatial_lrs_locate](#spatial_lrs_locate)
+[spatial_lrs_create](#spatial_lrs_create), [spatial_lrs_calibrate](#spatial_lrs_calibrate), [spatial_lrs_locate](#spatial_lrs_locate)
 
+---
+
+## spatial_lrs_calibrate
+
+**NAME**
+
+`spatial_lrs_calibrate` — calibrate the measures of an LRS network with points of known measure
+
+**SYNOPSIS**
+
+```
+spatial_lrs_calibrate <network.lrs> <points.csv> <output.lrs> [options]
+```
+
+**DESCRIPTION**
+
+Adjusts the measures of the routes of an LRS network using calibration points, for example the kilometer posts of a road. For every route with calibration points:
+
+1. each point is projected onto the route and a vertex is created there (or an existing vertex is reused) with the measure of the point;
+2. the measures of the other vertices are interpolated between calibration points, proportionally to the distance along the route;
+3. before the first and after the last point they are extrapolated with the slope (measure per distance unit) of the nearest calibrated interval, or with 1 measure unit per distance unit if the route has a single calibration point.
+
+The calibration points of a route must have increasing measures along the direction of the route; otherwise the route is not calibrated and an error is reported. Routes without points are copied unchanged. Calibrated routes are marked in the output file, so that `spatial_lrs_info -validate` does not expect the measure to grow like the distance.
+
+The points CSV must contain: `route_id`, `measure` and either `geometry` (POINT WKT) or `x`,`y` columns; optionally `id`.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-max_dist <value>` | Maximum distance from a calibration point to its route; farther points are ignored (default: `1.0`) |
+| `-route_id <col>` | Column with the route identifier (default: `route_id`) |
+| `-measure <col>` | Column with the known measure (default: `measure`) |
+| `-verbose` | Show the result for every route |
+
+**EXIT STATUS**
+
+`0` if every route that had calibration points was calibrated; `1` on a usage or I/O error, if no route could be calibrated, or if some route could not.
+
+**EXAMPLES**
+
+```
+spatial_lrs_calibrate roads.lrs milestones.csv roads_km.lrs
+spatial_lrs_calibrate roads.lrs milestones.csv roads_km.lrs -max_dist 5 -verbose
+```
+
+**SEE ALSO**
+
+[spatial_lrs_create](#spatial_lrs_create), [spatial_lrs_info](#spatial_lrs_info), [spatial_lrs_segment](#spatial_lrs_segment), [spatial_lrs_locate](#spatial_lrs_locate)
 
 ---
 
@@ -369,7 +435,11 @@ spatial_lrs_info <network.lrs> [options]
 
 **DESCRIPTION**
 
+<<<<<<< HEAD
 Reads a `.lrs` file created by `spatial_lrs_create` and reports the CRS, the number of routes and vertices, the total length, the bounding box, and, for each route, its vertex count, length and measure range (M-range). When the network contains routes calibrated with `spatial_lrs_calibrate`, the table also has a `Calibrated` column. With `-route`, it lists every vertex of that route with its measure.
+=======
+Reads a `.lrs` file created by `spatial_lrs_create` and reports the CRS, the number of routes and vertices, the total length, the bounding box, and, for each route, its vertex count, length of the geometry, measure range (M-range) and whether it was calibrated with `spatial_lrs_calibrate`. With `-route`, it lists every vertex of that route with its measure.
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
 
 With `-validate`, it also checks the M-values of every route and prints the issues found. Issues are errors (the exit code becomes `1`) or warnings.
 
@@ -379,13 +449,17 @@ With `-validate`, it also checks the M-values of every route and prints the issu
 | `TOO_FEW_VERTICES` | error | route has fewer than 2 vertices |
 | `NEGATIVE_MEASURE` | error | a vertex has a negative measure |
 | `MEASURE_OVERLAP` | error | measure does not increase between two vertices (decreases or repeats) |
-| `MEASURE_GAP` | error | measure grows more than the distance between two vertices |
-| `MEASURE_SHORT` | error | measure grows less than the distance between two vertices |
-| `LENGTH_MISMATCH` | error | last measure differs from the declared route length |
+| `MEASURE_GAP` | error | measure grows more than the route's measure/distance ratio allows between two vertices |
+| `MEASURE_SHORT` | error | measure grows less than the route's measure/distance ratio allows between two vertices |
+| `LENGTH_MISMATCH` | error | the declared route length differs from the length of the geometry |
 | `START_NOT_ZERO` | warning | first measure is not 0 |
 | `ZERO_LENGTH_SEGMENT` | warning | two consecutive vertices share the same position |
 
+<<<<<<< HEAD
 On calibrated routes the ratio between measure and distance changes between calibration points, so `MEASURE_GAP`, `MEASURE_SHORT`, `LENGTH_MISMATCH` and `START_NOT_ZERO` are not checked there (the measure must still increase), and the length shown is that of the geometry. Measure and distance are compared with a tolerance of `0.001`. A network created with `spatial_lrs_create` always passes validation; the checks are useful for `.lrs` files that were edited by hand or produced by other tools.
+=======
+The expected measure increment between two vertices is the distance between them multiplied by the measure/distance ratio of the route (1 for a network created by `spatial_lrs_create`, or the ratio given by `from_measure`/`to_measure`); the comparison uses a tolerance of `0.001`. These two checks and `START_NOT_ZERO` are skipped on routes calibrated with `spatial_lrs_calibrate`, whose ratio legitimately changes between calibration points; the measures must still increase. A network created with `spatial_lrs_create` always passes validation; the checks are useful for `.lrs` files that were edited by hand or produced by other tools.
+>>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
 
 **OPTIONS**
 

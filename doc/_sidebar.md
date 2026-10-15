@@ -54,6 +54,7 @@
   - [spatial_lrs_create](commands/network.md#spatial_lrs_create)
   - [spatial_lrs_locate](commands/network.md#spatial_lrs_locate)
   - [spatial_lrs_segment](commands/network.md#spatial_lrs_segment)
+  - [spatial_lrs_calibrate](commands/network.md#spatial_lrs_calibrate)
   - [spatial_lrs_info](commands/network.md#spatial_lrs_info)
   - [spatial_lrs_calibrate](commands/network.md#spatial_lrs_calibrate)
 

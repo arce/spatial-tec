@@ -1,20 +1,16 @@
 #include <algorithm>
 #include <cmath>
-#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
-#include <queue>
 #include <set>
 #include <sstream>
 #include <string>
 #include <vector>
 
-#include "../include/core/spatial_csv.hpp"
 #include "../include/core/spatial_string.hpp"
-#include "../include/core/spatial_types.hpp"
 
 struct Point2D {
   double x, y;
@@ -22,471 +18,389 @@ struct Point2D {
   Point2D(double x, double y) : x(x), y(y) {}
 
   double distanceTo(const Point2D& other) const {
-    double dx = x - other.x;
-    double dy = y - other.y;
-    return std::sqrt(dx * dx + dy * dy);
+    return std::sqrt((x - other.x) * (x - other.x) + (y - other.y) * (y - other.y));
   }
 };
 
 struct LRSVertex {
-  double x, y;
-  double measure;
-
-  LRSVertex() : x(0), y(0), measure(0) {}
-  LRSVertex(double x, double y, double m) : x(x), y(y), measure(m) {}
+  double x = 0, y = 0, measure = 0;
 };
 
 struct LRSRoute {
   std::string route_id;
   std::vector<LRSVertex> vertices;
-  double total_length;
-  std::map<std::string, std::string> attributes;
 };
 
 struct LRSNetwork {
   std::vector<LRSRoute> routes;
   std::map<std::string, int> route_index;
-  std::string crs;
 };
 
 struct LinearEvent {
   std::string id;
   std::string route_id;
-  double from_measure;
-  double to_measure;
-  double offset;
-  bool valid;
+  double from_measure = 0;
+  double to_measure = 0;
+  double offset = 0;
+  bool valid = false;
   std::map<std::string, std::string> attributes;
+  std::vector<std::string> source_ids;  // original event ids represented by this event
 };
 
 struct Segment {
   std::string id;
   std::string route_id;
-  double from_measure;
-  double to_measure;
-  double offset;
+  double from_measure, to_measure, offset, length;
   std::vector<Point2D> geometry;
   std::map<std::string, std::string> attributes;
-  std::string source_event_id;
+  std::string source_events;
 };
 
-LRSNetwork loadLRSNetwork(const std::string& filename) {
-  LRSNetwork network;
+static std::string csvQuote(const std::string& s) {
+  if (s.find_first_of(",\"\n") == std::string::npos)
+    return s;
+  std::string out = "\"";
+  for (char c : s) {
+    if (c == '"')
+      out += '"';
+    out += c;
+  }
+  return out + "\"";
+}
+
+static bool loadLRSNetwork(const std::string& filename, LRSNetwork& network) {
   std::ifstream file(filename);
   if (!file.is_open()) {
     std::cerr << "Error: Could not open file: " << filename << "\n";
-    return network;
+    return false;
   }
 
-  std::string line;
-  std::string section;
-  bool in_routes = false;
-
+  std::string line, section;
   while (std::getline(file, line)) {
     line = trim(line);
-    if (line.empty())
+    if (line.empty() || line[0] == '#')
       continue;
-
-    if (line[0] == '#')
-      continue;
-
     if (line[0] == '@') {
       section = line.substr(1);
-      in_routes = (section == "ROUTES");
       continue;
     }
+    if (section != "ROUTES")
+      continue;
 
-    if (in_routes && section == "ROUTES") {
-      auto parts = splitCSV(line);
-      if (parts.size() >= 4) {
-        std::string route_id = parts[0];
+    auto parts = splitCSV(line);
+    if (parts.size() < 4 || toLower(parts[0]) == "route_id")
+      continue;
 
-        std::string geom = parts[3];
-        if (geom.front() == '"' && geom.back() == '"') {
-          geom = geom.substr(1, geom.length() - 2);
-        }
+    std::string geom = parts[3];
+    if (geom.size() >= 2 && geom.front() == '"' && geom.back() == '"')
+      geom = geom.substr(1, geom.length() - 2);
+    size_t start = geom.find('(');
+    size_t end = geom.rfind(')');
+    if (start == std::string::npos || end == std::string::npos || end <= start)
+      continue;
 
-        size_t start = geom.find('(');
-        size_t end = geom.rfind(')');
-        if (start != std::string::npos && end != std::string::npos) {
-          std::string inner = geom.substr(start + 1, end - start - 1);
-          auto points = split(inner, ',');
-
-          LRSRoute route;
-          route.route_id = route_id;
-
-          for (const auto& pt : points) {
-            auto coords = split(trim(pt), ' ');
-            if (coords.size() >= 3) {
-              try {
-                double x = std::stod(coords[0]);
-                double y = std::stod(coords[1]);
-                double m = std::stod(coords[2]);
-                route.vertices.push_back(LRSVertex(x, y, m));
-              } catch (...) {
-              }
-            }
-          }
-
-          if (!route.vertices.empty()) {
-            route.total_length = route.vertices.back().measure - route.vertices.front().measure;
-            network.routes.push_back(route);
-            network.route_index[route_id] = network.routes.size() - 1;
-          }
+    LRSRoute route;
+    route.route_id = parts[0];
+    for (const auto& pt : split(geom.substr(start + 1, end - start - 1), ',')) {
+      auto c = split(trim(pt), ' ');
+      if (c.size() >= 3) {
+        try {
+          route.vertices.push_back({std::stod(c[0]), std::stod(c[1]), std::stod(c[2])});
+        } catch (...) {
         }
       }
     }
+    if (!route.vertices.empty()) {
+      network.routes.push_back(route);
+      network.route_index[route.route_id] = (int)network.routes.size() - 1;
+    }
   }
-
-  return network;
+  return true;
 }
 
-std::vector<LinearEvent> readLinearEvents(const std::string& filename) {
-  std::vector<LinearEvent> events;
+// Reads the events. attr_names receives the extra columns in file order.
+static bool readLinearEvents(const std::string& filename, std::vector<LinearEvent>& events,
+                             std::vector<std::string>& attr_names, int& skipped) {
   std::ifstream file(filename);
   if (!file.is_open()) {
     std::cerr << "Error: Could not open file: " << filename << "\n";
-    return events;
+    return false;
   }
 
   std::string line;
   std::vector<std::string> headers;
   bool is_header = true;
-
-  int col_id = -1;
-  int col_route_id = -1;
-  int col_from_measure = -1;
-  int col_to_measure = -1;
-  int col_offset = -1;
+  int col_id = -1, col_route = -1, col_from = -1, col_to = -1, col_offset = -1;
   std::vector<int> attr_cols;
+  skipped = 0;
 
   while (std::getline(file, line)) {
     line = trim(line);
     if (line.empty() || line[0] == '#')
       continue;
-
     auto values = splitCSV(line);
 
     if (is_header) {
       headers = values;
-
       for (size_t i = 0; i < headers.size(); ++i) {
-        std::string lower = toLower(headers[i]);
-        if (lower == "id" || lower == "event_id") {
-          col_id = i;
-        } else if (lower == "route_id" || lower == "route") {
-          col_route_id = i;
-        } else if (lower == "from_measure" || lower == "from" || lower == "m_from") {
-          col_from_measure = i;
-        } else if (lower == "to_measure" || lower == "to" || lower == "m_to") {
-          col_to_measure = i;
-        } else if (lower == "offset") {
-          col_offset = i;
-        } else {
-          attr_cols.push_back(i);
+        std::string lower = toLower(trim(headers[i]));
+        if (lower == "id" || lower == "event_id")
+          col_id = (int)i;
+        else if (lower == "route_id" || lower == "route")
+          col_route = (int)i;
+        else if (lower == "from_measure" || lower == "from" || lower == "m_from")
+          col_from = (int)i;
+        else if (lower == "to_measure" || lower == "to" || lower == "m_to")
+          col_to = (int)i;
+        else if (lower == "offset")
+          col_offset = (int)i;
+        else {
+          attr_cols.push_back((int)i);
+          attr_names.push_back(trim(headers[i]));
         }
       }
-
+      if (col_route < 0 || col_from < 0 || col_to < 0) {
+        std::cerr << "Error: The events file needs the columns route_id, from_measure and to_measure\n";
+        return false;
+      }
       is_header = false;
       continue;
     }
 
-    LinearEvent event;
-    event.valid = false;
-    event.offset = 0;
+    auto get = [&](int c) -> std::string {
+      return (c >= 0 && c < (int)values.size()) ? trim(values[c]) : "";
+    };
 
-    if (col_id >= 0 && col_id < (int)values.size()) {
-      event.id = values[col_id];
-    } else {
-      event.id = std::to_string(events.size() + 1);
-    }
-
-    if (col_route_id >= 0 && col_route_id < (int)values.size()) {
-      event.route_id = values[col_route_id];
-    }
-
-    if (col_from_measure >= 0 && col_from_measure < (int)values.size() &&
-        isNumber(values[col_from_measure])) {
-      event.from_measure = std::stod(values[col_from_measure]);
-    } else {
+    LinearEvent ev;
+    ev.id = col_id >= 0 && !get(col_id).empty() ? get(col_id) : std::to_string(events.size() + skipped + 1);
+    ev.route_id = get(col_route);
+    if (!isNumber(get(col_from)) || !isNumber(get(col_to))) {
+      skipped++;
       continue;
     }
-
-    if (col_to_measure >= 0 && col_to_measure < (int)values.size() &&
-        isNumber(values[col_to_measure])) {
-      event.to_measure = std::stod(values[col_to_measure]);
-    } else {
-      continue;
-    }
-
-    if (col_offset >= 0 && col_offset < (int)values.size() && isNumber(values[col_offset])) {
-      event.offset = std::stod(values[col_offset]);
-    }
-
-    if (event.from_measure <= event.to_measure) {
-      event.valid = true;
-    }
-
-    for (int idx : attr_cols) {
-      if (idx < (int)values.size()) {
-        event.attributes[headers[idx]] = values[idx];
-      }
-    }
-
-    events.push_back(event);
+    ev.from_measure = std::stod(get(col_from));
+    ev.to_measure = std::stod(get(col_to));
+    if (col_offset >= 0 && isNumber(get(col_offset)))
+      ev.offset = std::stod(get(col_offset));
+    ev.valid = ev.from_measure <= ev.to_measure;
+    for (size_t k = 0; k < attr_cols.size(); ++k)
+      ev.attributes[attr_names[k]] = get(attr_cols[k]);
+    ev.source_ids.push_back(ev.id);
+    events.push_back(ev);
   }
-
-  return events;
+  return !is_header;
 }
 
-std::vector<Point2D> extractSegmentGeometry(const LRSRoute& route, double from_measure,
-                                            double to_measure) {
-  std::vector<Point2D> segment_points;
-
-  if (route.vertices.size() < 2)
-    return segment_points;
-
-  size_t start_idx = 0;
-  for (size_t i = 0; i < route.vertices.size(); ++i) {
-    if (route.vertices[i].measure >= from_measure) {
-      start_idx = i;
-      break;
-    }
-  }
-
-  size_t end_idx = route.vertices.size() - 1;
-  for (size_t i = route.vertices.size() - 1; i > 0; --i) {
-    if (route.vertices[i].measure <= to_measure) {
-      end_idx = i;
-      break;
-    }
-  }
-
-  if (start_idx > end_idx)
-    return segment_points;
-
-  if (start_idx > 0 && route.vertices[start_idx].measure > from_measure) {
-    const auto& v1 = route.vertices[start_idx - 1];
-    const auto& v2 = route.vertices[start_idx];
-    double t = (from_measure - v1.measure) / (v2.measure - v1.measure);
-    double x = v1.x + t * (v2.x - v1.x);
-    double y = v1.y + t * (v2.y - v1.y);
-    segment_points.push_back(Point2D(x, y));
-  } else {
-    segment_points.push_back(Point2D(route.vertices[start_idx].x, route.vertices[start_idx].y));
-  }
-
-  for (size_t i = start_idx; i <= end_idx; ++i) {
-    if (i == start_idx && route.vertices[i].measure < from_measure)
-      continue;
-    if (i == end_idx && route.vertices[i].measure > to_measure)
-      continue;
-    segment_points.push_back(Point2D(route.vertices[i].x, route.vertices[i].y));
-  }
-
-  if (end_idx < route.vertices.size() - 1 && route.vertices[end_idx].measure < to_measure) {
-    const auto& v1 = route.vertices[end_idx];
-    const auto& v2 = route.vertices[end_idx + 1];
-    double t = (to_measure - v1.measure) / (v2.measure - v1.measure);
-    double x = v1.x + t * (v2.x - v1.x);
-    double y = v1.y + t * (v2.y - v1.y);
-    segment_points.push_back(Point2D(x, y));
-  }
-
-  return segment_points;
+static Point2D pointAtMeasure(const LRSVertex& a, const LRSVertex& b, double m) {
+  double t = (b.measure > a.measure) ? (m - a.measure) / (b.measure - a.measure) : 0.0;
+  return Point2D(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y));
 }
 
-std::vector<Point2D> applyOffset(const std::vector<Point2D>& points, double offset) {
+// Part of the route between two measures, interpolating the end points.
+static std::vector<Point2D> extractSegmentGeometry(const LRSRoute& route, double from, double to) {
+  std::vector<Point2D> pts;
+  const auto& v = route.vertices;
+  auto push = [&](const Point2D& p) {
+    if (pts.empty() || pts.back().distanceTo(p) > 1e-12)
+      pts.push_back(p);
+  };
+  for (size_t i = 0; i + 1 < v.size(); ++i) {
+    double m0 = v[i].measure, m1 = v[i + 1].measure;
+    if (m1 <= m0)
+      continue;
+    double lo = std::max(from, m0), hi = std::min(to, m1);
+    if (lo > hi)
+      continue;
+    push(pointAtMeasure(v[i], v[i + 1], lo));
+    push(pointAtMeasure(v[i], v[i + 1], hi));
+  }
+  return pts;
+}
+
+static std::vector<Point2D> applyOffset(const std::vector<Point2D>& points, double offset) {
   if (std::abs(offset) < 1e-12 || points.size() < 2)
     return points;
 
   std::vector<Point2D> result;
-
   for (size_t i = 0; i < points.size(); ++i) {
-    double dx = 0, dy = 0;
-    if (i == 0 && points.size() > 1) {
+    double dx, dy;
+    if (i == 0) {
       dx = points[1].x - points[0].x;
       dy = points[1].y - points[0].y;
-    } else if (i == points.size() - 1 && points.size() > 1) {
+    } else if (i == points.size() - 1) {
       dx = points[i].x - points[i - 1].x;
       dy = points[i].y - points[i - 1].y;
-    } else if (i > 0 && i < points.size() - 1) {
-      double dx1 = points[i].x - points[i - 1].x;
-      double dy1 = points[i].y - points[i - 1].y;
-      double dx2 = points[i + 1].x - points[i].x;
-      double dy2 = points[i + 1].y - points[i].y;
-      dx = (dx1 + dx2) / 2.0;
-      dy = (dy1 + dy2) / 2.0;
+    } else {
+      dx = (points[i].x - points[i - 1].x + points[i + 1].x - points[i].x) / 2.0;
+      dy = (points[i].y - points[i - 1].y + points[i + 1].y - points[i].y) / 2.0;
     }
-
     double len = std::sqrt(dx * dx + dy * dy);
     if (len < 1e-12) {
       result.push_back(points[i]);
       continue;
     }
-
-    double nx = -dy / len;
-    double ny = dx / len;
-
-    double x = points[i].x + nx * offset;
-    double y = points[i].y + ny * offset;
-    result.push_back(Point2D(x, y));
+    result.push_back(Point2D(points[i].x - dy / len * offset, points[i].y + dx / len * offset));
   }
-
   return result;
 }
 
-bool segmentsOverlap(const LinearEvent& e1, const LinearEvent& e2) {
-  if (e1.route_id != e2.route_id)
-    return false;
-  return !(e1.to_measure < e2.from_measure || e2.to_measure < e1.from_measure);
-}
+enum class MergeMode { Both, Concatenate, Dissolve };
 
-bool segmentsAdjacent(const LinearEvent& e1, const LinearEvent& e2, double tolerance = 1e-9) {
-  if (e1.route_id != e2.route_id)
-    return false;
-  return (std::abs(e1.to_measure - e2.from_measure) < tolerance) ||
-         (std::abs(e2.to_measure - e1.from_measure) < tolerance);
-}
+// Merges the events of each group (same route and same value in every merge_by
+// field) whose measure ranges touch (concatenate) and/or overlap (dissolve).
+static std::vector<LinearEvent> mergeEvents(const std::vector<LinearEvent>& events,
+                                            const std::vector<std::string>& merge_by, MergeMode mode) {
+  const double tol = 1e-9;
 
-LinearEvent mergeEvents(const LinearEvent& e1, const LinearEvent& e2) {
-  LinearEvent merged;
-  merged.id = e1.id + "_" + e2.id;
-  merged.route_id = e1.route_id;
-  merged.from_measure = std::min(e1.from_measure, e2.from_measure);
-  merged.to_measure = std::max(e1.to_measure, e2.to_measure);
-  merged.offset = (e1.offset + e2.offset) / 2.0;
-  merged.valid = true;
-
-  for (const auto& [key, value] : e1.attributes) {
-    merged.attributes[key] = value;
+  std::vector<std::string> route_order;
+  std::map<std::string, std::vector<const LinearEvent*>> groups;
+  std::vector<std::string> group_order;
+  for (const auto& e : events) {
+    if (std::find(route_order.begin(), route_order.end(), e.route_id) == route_order.end())
+      route_order.push_back(e.route_id);
+    std::string key = e.route_id;
+    for (const auto& f : merge_by) {
+      auto it = e.attributes.find(f);
+      key += '\x1f' + (it == e.attributes.end() ? std::string() : it->second);
+    }
+    if (!groups.count(key))
+      group_order.push_back(key);
+    groups[key].push_back(&e);
   }
-  for (const auto& [key, value] : e2.attributes) {
-    merged.attributes[key] = value;
-  }
-  merged.attributes["merged_from"] = e1.id + "," + e2.id;
 
+  std::vector<LinearEvent> merged;
+  for (const auto& key : group_order) {
+    auto list = groups[key];
+    std::stable_sort(list.begin(), list.end(), [](const LinearEvent* a, const LinearEvent* b) {
+      return a->from_measure < b->from_measure;
+    });
+
+    LinearEvent cur = *list[0];
+    int count = 1;
+    double offset_sum = cur.offset;
+    auto flush = [&]() {
+      cur.offset = offset_sum / count;
+      merged.push_back(cur);
+    };
+
+    for (size_t i = 1; i < list.size(); ++i) {
+      const LinearEvent& nx = *list[i];
+      bool adjacent = std::abs(nx.from_measure - cur.to_measure) <= tol;
+      bool overlap = nx.from_measure < cur.to_measure - tol;
+      bool join = (mode == MergeMode::Concatenate && adjacent) || (mode == MergeMode::Dissolve && overlap) ||
+                  (mode == MergeMode::Both && (adjacent || overlap));
+      if (!join) {
+        flush();
+        cur = nx;
+        count = 1;
+        offset_sum = cur.offset;
+        continue;
+      }
+      cur.to_measure = std::max(cur.to_measure, nx.to_measure);
+      for (const auto& id : nx.source_ids)
+        cur.source_ids.push_back(id);
+      // An attribute that differs between the merged events is left empty.
+      for (auto& [k, v] : cur.attributes) {
+        auto it = nx.attributes.find(k);
+        if (it == nx.attributes.end() || it->second != v)
+          v.clear();
+      }
+      offset_sum += nx.offset;
+      count++;
+    }
+    flush();
+  }
+
+  std::stable_sort(merged.begin(), merged.end(), [&](const LinearEvent& a, const LinearEvent& b) {
+    auto ia = std::find(route_order.begin(), route_order.end(), a.route_id) - route_order.begin();
+    auto ib = std::find(route_order.begin(), route_order.end(), b.route_id) - route_order.begin();
+    if (ia != ib)
+      return ia < ib;
+    return a.from_measure < b.from_measure;
+  });
+
+  int n = 0;
+  for (auto& e : merged)
+    e.id = std::to_string(++n);
   return merged;
 }
 
-std::vector<LinearEvent> mergeOverlappingEvents(const std::vector<LinearEvent>& events) {
-  if (events.empty())
-    return events;
-
-  std::vector<LinearEvent> merged_events;
-  std::vector<bool> processed(events.size(), false);
-
-  for (size_t i = 0; i < events.size(); ++i) {
-    if (processed[i])
-      continue;
-
-    LinearEvent current = events[i];
-    processed[i] = true;
-
-    bool changed = true;
-    while (changed) {
-      changed = false;
-      for (size_t j = 0; j < events.size(); ++j) {
-        if (processed[j])
-          continue;
-
-        if (segmentsOverlap(current, events[j]) || segmentsAdjacent(current, events[j])) {
-          current = mergeEvents(current, events[j]);
-          processed[j] = true;
-          changed = true;
-        }
-      }
-    }
-
-    merged_events.push_back(current);
-  }
-
-  return merged_events;
-}
-
-std::string pointsToWKT(const std::vector<Point2D>& points) {
-  if (points.size() < 2)
-    return "";
-
-  std::string wkt = "LINESTRING(";
+static std::string pointsToWKT(const std::vector<Point2D>& points) {
+  std::ostringstream os;
+  os << std::fixed << std::setprecision(6) << "LINESTRING(";
   for (size_t i = 0; i < points.size(); ++i) {
     if (i > 0)
-      wkt += ", ";
-    wkt += std::to_string(points[i].x) + " " + std::to_string(points[i].y);
+      os << ", ";
+    os << points[i].x << " " << points[i].y;
   }
-  wkt += ")";
-
-  return wkt;
+  os << ")";
+  return os.str();
 }
 
-void writeSegmentsCSV(const std::vector<Segment>& segments, const std::string& filename) {
+static bool writeSegmentsCSV(const std::vector<Segment>& segments, const std::vector<std::string>& attr_names,
+                             const std::string& filename) {
   std::ofstream file(filename);
   if (!file.is_open()) {
     std::cerr << "Error: Could not create file: " << filename << "\n";
-    return;
+    return false;
   }
 
-  file << "# LRS Segments\n";
-  file << "# Geometry column: geometry\n";
-  file << "# Segments: " << segments.size() << "\n";
-
-  std::set<std::string> all_attrs;
-  for (const auto& seg : segments) {
-    for (const auto& [key, value] : seg.attributes) {
-      all_attrs.insert(key);
-    }
-  }
-
+  file << "# LRS Segments\n# Geometry column: geometry\n# Segments: " << segments.size() << "\n";
   file << "id,route_id,from_measure,to_measure,offset,length";
-  for (const auto& attr : all_attrs) {
-    file << "," << attr;
-  }
+  for (const auto& a : attr_names)
+    file << "," << csvQuote(a);
   file << ",source_event,geometry\n";
 
   for (const auto& seg : segments) {
-    double length = 0;
-    for (size_t i = 0; i < seg.geometry.size() - 1; ++i) {
-      length += seg.geometry[i].distanceTo(seg.geometry[i + 1]);
+    file << csvQuote(seg.id) << "," << csvQuote(seg.route_id) << "," << std::fixed << std::setprecision(6)
+         << seg.from_measure << "," << seg.to_measure << "," << seg.offset << "," << seg.length;
+    for (const auto& a : attr_names) {
+      auto it = seg.attributes.find(a);
+      file << "," << (it != seg.attributes.end() ? csvQuote(it->second) : "");
     }
-
-    file << seg.id << "," << seg.route_id << "," << std::fixed << std::setprecision(6)
-         << seg.from_measure << "," << std::fixed << std::setprecision(6) << seg.to_measure << ","
-         << std::fixed << std::setprecision(6) << seg.offset << "," << std::fixed
-         << std::setprecision(6) << length;
-
-    for (const auto& attr : all_attrs) {
-      auto it = seg.attributes.find(attr);
-      if (it != seg.attributes.end()) {
-        file << "," << it->second;
-      } else {
-        file << ",";
-      }
-    }
-
-    file << "," << seg.source_event_id << ","
-         << "\"" << pointsToWKT(seg.geometry) << "\"\n";
+    file << "," << csvQuote(seg.source_events) << ",\"" << pointsToWKT(seg.geometry) << "\"\n";
   }
+  return true;
 }
 
-void printUsage() {
+static void printUsage() {
   std::cerr << "spatial_lrs_segment - Create segments from linear events\n\n";
   std::cerr << "Usage: spatial_lrs_segment <network.lrs> <events.csv> <output.csv> [options]\n\n";
   std::cerr << "Options:\n";
-  std::cerr << "  -offset <value>   Default offset (lateral displacement)\n";
-  std::cerr << "  -merge            Merge overlapping/adjacent segments\n";
-  std::cerr << "  -verbose          Show detailed information\n\n";
+  std::cerr << "  -offset <value>        Default lateral offset (used when the event has no offset)\n";
+  std::cerr << "  -merge                 Merge events of the same route that touch or overlap\n";
+  std::cerr << "  -merge_by <f1,f2,...>  Merge only events with the same value in all these columns\n";
+  std::cerr << "                         (implies -merge)\n";
+  std::cerr << "  -mode <mode>           What to merge (implies -merge):\n";
+  std::cerr << "                           concatenate  only adjacent events (end = next start)\n";
+  std::cerr << "                           dissolve     only overlapping events\n";
+  std::cerr << "                           both         adjacent and overlapping (default)\n";
+  std::cerr << "  -keep <f1,f2,...>      Keep only these attribute columns in the output\n";
+  std::cerr << "                         (splits a multi-attribute event table into separate tables)\n";
+  std::cerr << "  -verbose               Show detailed information\n\n";
   std::cerr << "Events CSV must contain:\n";
-  std::cerr << "  id: Event identifier\n";
-  std::cerr << "  route_id: Route identifier\n";
-  std::cerr << "  from_measure: Start measure\n";
-  std::cerr << "  to_measure: End measure\n";
-  std::cerr << "  offset: Lateral offset (optional)\n\n";
-  std::cerr << "Example:\n";
-  std::cerr << "  spatial_lrs_segment lrs_network.lrs conditions.csv segments.csv -offset 3\n";
-  std::cerr << "  spatial_lrs_segment lrs_network.lrs conditions.csv segments.csv -merge\n";
+  std::cerr << "  route_id, from_measure, to_measure; optional: id, offset and any attribute columns\n\n";
+  std::cerr << "With merging, the output events are numbered 1, 2, 3... in route and measure order; the\n";
+  std::cerr << "column source_event lists the original ids (separated by ;). When merged events differ in an attribute that is not in\n";
+  std::cerr << "-merge_by, that attribute is left empty.\n\n";
+  std::cerr << "Examples:\n";
+  std::cerr << "  spatial_lrs_segment network.lrs conditions.csv segments.csv -offset 3\n";
+  std::cerr << "  spatial_lrs_segment network.lrs pavement.csv concrete.csv -merge_by material -mode concatenate\n";
+  std::cerr << "  spatial_lrs_segment network.lrs pavement.csv lanes.csv -keep lanes -merge_by lanes\n";
+}
+
+static std::vector<std::string> splitList(const std::string& s) {
+  std::vector<std::string> out;
+  for (const auto& t : split(s, ','))
+    out.push_back(trim(t));
+  return out;
 }
 
 int main(int argc, char* argv[]) {
+  if (argc >= 2 && (std::string(argv[1]) == "-help" || std::string(argv[1]) == "-h")) {
+    printUsage();
+    return 0;
+  }
   if (argc < 4) {
     printUsage();
     return 1;
@@ -496,17 +410,50 @@ int main(int argc, char* argv[]) {
   std::string events_file = argv[2];
   std::string output_file = argv[3];
   double default_offset = 0;
-  bool merge = false;
-  bool verbose = false;
+  bool merge = false, verbose = false;
+  std::vector<std::string> merge_by, keep;
+  bool has_keep = false;
+  MergeMode mode = MergeMode::Both;
 
   for (int i = 4; i < argc; ++i) {
     std::string arg = argv[i];
-    if (arg == "-offset" && i + 1 < argc) {
-      default_offset = std::stod(argv[++i]);
-    } else if (arg == "-merge") {
-      merge = true;
-    } else if (arg == "-verbose") {
-      verbose = true;
+    try {
+      if (arg == "-offset" && i + 1 < argc) {
+        default_offset = std::stod(argv[++i]);
+      } else if (arg == "-merge") {
+        merge = true;
+      } else if (arg == "-merge_by" && i + 1 < argc) {
+        merge = true;
+        merge_by = splitList(argv[++i]);
+      } else if (arg == "-mode" && i + 1 < argc) {
+        merge = true;
+        std::string m = toLower(argv[++i]);
+        if (m == "concatenate")
+          mode = MergeMode::Concatenate;
+        else if (m == "dissolve")
+          mode = MergeMode::Dissolve;
+        else if (m == "both")
+          mode = MergeMode::Both;
+        else {
+          std::cerr << "Error: -mode must be concatenate, dissolve or both\n";
+          return 1;
+        }
+      } else if (arg == "-keep" && i + 1 < argc) {
+        has_keep = true;
+        keep = splitList(argv[++i]);
+      } else if (arg == "-verbose") {
+        verbose = true;
+      } else if (arg == "-help" || arg == "-h") {
+        printUsage();
+        return 0;
+      } else {
+        std::cerr << "Error: Unknown option or missing value: " << arg << "\n";
+        printUsage();
+        return 1;
+      }
+    } catch (const std::exception&) {
+      std::cerr << "Error: Invalid numeric value for " << arg << "\n";
+      return 1;
     }
   }
 
@@ -517,124 +464,124 @@ int main(int argc, char* argv[]) {
   std::cout << "Events: " << events_file << "\n";
   std::cout << "Output: " << output_file << "\n";
   std::cout << "Default offset: " << default_offset << "\n";
-  std::cout << "Merge: " << (merge ? "yes" : "no") << "\n\n";
+  std::cout << "Merge: " << (merge ? "yes" : "no");
+  if (merge) {
+    std::cout << " (" << (mode == MergeMode::Both ? "concatenate + dissolve"
+                                                   : mode == MergeMode::Concatenate ? "concatenate" : "dissolve");
+    if (!merge_by.empty()) {
+      std::cout << ", same value of";
+      for (const auto& f : merge_by)
+        std::cout << " " << f;
+    }
+    std::cout << ")";
+  }
+  std::cout << "\n\n";
 
-  LRSNetwork network = loadLRSNetwork(network_file);
-
+  LRSNetwork network;
+  if (!loadLRSNetwork(network_file, network))
+    return 1;
   if (network.routes.empty()) {
     std::cerr << "Error: No routes found in network file\n";
     return 1;
   }
-
   std::cout << "Routes loaded: " << network.routes.size() << "\n";
 
-  std::vector<LinearEvent> events = readLinearEvents(events_file);
-
+  std::vector<LinearEvent> events;
+  std::vector<std::string> attr_names;
+  int skipped = 0;
+  if (!readLinearEvents(events_file, events, attr_names, skipped))
+    return 1;
   if (events.empty()) {
     std::cerr << "Error: No events found\n";
     return 1;
   }
-
   std::cout << "Events loaded: " << events.size() << "\n";
+  if (skipped > 0)
+    std::cout << "Events skipped (non-numeric measures): " << skipped << "\n";
+
+  for (const auto& f : merge_by)
+    if (std::find(attr_names.begin(), attr_names.end(), f) == attr_names.end()) {
+      std::cerr << "Error: -merge_by column '" << f << "' is not a column of " << events_file << "\n";
+      return 1;
+    }
+  for (const auto& f : keep)
+    if (std::find(attr_names.begin(), attr_names.end(), f) == attr_names.end()) {
+      std::cerr << "Error: -keep column '" << f << "' is not an attribute column of " << events_file << "\n";
+      return 1;
+    }
 
   std::vector<LinearEvent> valid_events;
-  for (const auto& event : events) {
-    if (event.valid) {
-      valid_events.push_back(event);
-    }
-  }
-
+  for (const auto& e : events)
+    if (e.valid)
+      valid_events.push_back(e);
   std::cout << "Valid events: " << valid_events.size() << "\n";
-
   if (valid_events.empty()) {
-    std::cerr << "Error: No valid events found\n";
+    std::cerr << "Error: No valid events found (from_measure must not exceed to_measure)\n";
     return 1;
   }
 
-  std::vector<LinearEvent> processed_events;
+  std::vector<LinearEvent> processed = valid_events;
   if (merge) {
-    std::cout << "\nMerging overlapping/adjacent segments...\n";
-    processed_events = mergeOverlappingEvents(valid_events);
-    std::cout << "Events after merging: " << processed_events.size() << "\n";
-  } else {
-    processed_events = valid_events;
+    processed = mergeEvents(valid_events, merge_by, mode);
+    std::cout << "Events after merging: " << processed.size() << "\n";
   }
 
+  std::vector<std::string> out_attrs = has_keep ? keep : attr_names;
+
   std::vector<Segment> segments;
-  int created = 0;
-  int errors = 0;
-
-  std::cout << "\nCreating segments...\n";
-
-  for (const auto& event : processed_events) {
+  int errors = 0, clipped = 0;
+  for (const auto& event : processed) {
     auto it = network.route_index.find(event.route_id);
     if (it == network.route_index.end()) {
       errors++;
+      std::cerr << "  Event " << event.id << ": route '" << event.route_id << "' not in the network\n";
       continue;
     }
-
     const LRSRoute& route = network.routes[it->second];
-
     std::vector<Point2D> geom = extractSegmentGeometry(route, event.from_measure, event.to_measure);
-
     if (geom.size() < 2) {
       errors++;
+      std::cerr << "  Event " << event.id << ": measures " << event.from_measure << " - " << event.to_measure
+                << " give no segment on route " << event.route_id << "\n";
       continue;
     }
 
-    double offset = (event.offset != 0) ? event.offset : default_offset;
-    if (std::abs(offset) > 1e-12) {
-      geom = applyOffset(geom, offset);
-    }
+    if (event.from_measure < route.vertices.front().measure - 1e-9 ||
+        event.to_measure > route.vertices.back().measure + 1e-9)
+      clipped++;
 
     Segment seg;
     seg.id = event.id;
     seg.route_id = event.route_id;
     seg.from_measure = event.from_measure;
     seg.to_measure = event.to_measure;
-    seg.offset = offset;
-    seg.geometry = geom;
+    seg.length = 0;
+    for (size_t i = 0; i + 1 < geom.size(); ++i)
+      seg.length += geom[i].distanceTo(geom[i + 1]);
+    seg.offset = (event.offset != 0) ? event.offset : default_offset;
+    seg.geometry = applyOffset(geom, seg.offset);
     seg.attributes = event.attributes;
-    seg.source_event_id = event.id;
-
+    for (size_t k = 0; k < event.source_ids.size(); ++k)
+      seg.source_events += (k ? ";" : "") + event.source_ids[k];
     segments.push_back(seg);
-    created++;
 
-    if (verbose && created % 10 == 0) {
-      std::cout << "\r  Progress: " << created << "/" << processed_events.size() << std::flush;
-    }
+    if (verbose)
+      std::cout << "  " << seg.id << " -> route " << seg.route_id << ", M: " << std::fixed << std::setprecision(4)
+                << seg.from_measure << " - " << seg.to_measure << ", length " << seg.length << ", "
+                << seg.geometry.size() << " vertices\n";
   }
 
-  if (verbose) {
-    std::cout << "\r  Progress: " << processed_events.size() << "/" << processed_events.size()
-              << "\n";
-  }
-
-  writeSegmentsCSV(segments, output_file);
+  if (!writeSegmentsCSV(segments, out_attrs, output_file))
+    return 1;
 
   std::cout << "\n========================================\n";
   std::cout << "  SEGMENT CREATION COMPLETE\n";
   std::cout << "========================================\n";
-  std::cout << "Events processed: " << processed_events.size() << "\n";
-  std::cout << "Segments created: " << created << "\n";
+  std::cout << "Events processed: " << processed.size() << "\n";
+  std::cout << "Segments created: " << segments.size() << "\n";
+  if (clipped > 0)
+    std::cout << "Segments clipped to the measure range of the route: " << clipped << "\n";
   std::cout << "Errors: " << errors << "\n";
   std::cout << "Output written to: " << output_file << "\n";
-
-  if (verbose) {
-    std::cout << "\nSample segments:\n";
-    int count = 0;
-    for (const auto& seg : segments) {
-      if (count < 5) {
-        std::cout << "  " << seg.id << " -> Route: " << seg.route_id << ", M: " << std::fixed
-                  << std::setprecision(4) << seg.from_measure << " - " << std::fixed
-                  << std::setprecision(4) << seg.to_measure << ", Offset: " << std::fixed
-                  << std::setprecision(2) << seg.offset << ", Length: " << std::fixed
-                  << std::setprecision(4) << seg.geometry.size() << " vertices\n";
-        count++;
-      }
-    }
-  }
-
   return 0;
 }
-

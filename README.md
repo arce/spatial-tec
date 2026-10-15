@@ -5,7 +5,15 @@ A collection of C++17 command-line utilities for spatial (vector and raster) dat
 ## Requirements
 
 - `g++` (Linux/macOS) with C++17 support, or `mingw-w64` for cross-compiling to Windows
+<<<<<<< HEAD
+<<<<<<< HEAD
+- The 45 stable command-line tools, plus 5 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+=======
+- The 46 stable command-line tools, plus 6 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+>>>>>>> 9612af9c91ae858debce8b24c2c80f22bd6c523e
+=======
 - The 44 stable command-line tools, plus 5 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+>>>>>>> 6b762505aeb4e48a07829e4b962d06822f23e2b5
 - `spatial_viewer` additionally needs FLTK, vendored per platform under `fltk/` (`fltk/linux`, `fltk/mac-arm`, `fltk/mac-intel`, `fltk/windows` -- each with its own `include/` and `lib/`), so a fresh checkout can build it without installing FLTK's dev packages first. See the comments at the top of the `Makefile` for what each platform additionally needs from the system itself (X11 client + fontconfig dev headers on Linux; nothing extra on macOS; `mingw-w64` on whichever machine cross-compiles to Windows).
 
 ## Build
@@ -92,7 +100,8 @@ Running any command with no arguments prints its usage help.
 | `spatial_shortest_path` | Shortest path over a network |
 | `spatial_lrs_create` | Create Linear Referencing System (LRS) networks |
 | `spatial_lrs_locate` | Locate point events along an LRS network |
-| `spatial_lrs_segment` | Build segments from linear events over an LRS |
+| `spatial_lrs_segment` | Build segments from linear events over an LRS; concatenate/dissolve events, split event tables by attribute |
+| `spatial_lrs_calibrate` | Calibrate the measures of an LRS with points of known measure |
 | `spatial_lrs_info` | Inspect and validate an LRS network (routes, lengths, M-ranges, gaps/overlaps) |
 | `spatial_lrs_calibrate` | Calibrate LRS measures using points of known measure (mileposts) |
 | `spatial_svg` | Generate SVG maps |
