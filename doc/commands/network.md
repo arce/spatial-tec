@@ -319,7 +319,7 @@ spatial_lrs_locate lrs_network.lrs accidents.csv located_accidents.csv
 
 **NAME**
 
-`spatial_lrs_segment` — create segments from linear events
+`spatial_lrs_segment` — create line segments from linear events, or points from point events
 
 **SYNOPSIS**
 
@@ -331,7 +331,9 @@ spatial_lrs_segment <network.lrs> <events.csv> <output.csv> [options]
 
 Generates line segment geometry from linear events defined by a measure range (`from_measure`/`to_measure`) over an LRS network. It can also aggregate the events first (concatenate and/or dissolve) and keep only some of their attribute columns, which together allow splitting a multi-attribute event table into one table per attribute.
 
-The events CSV must contain: `route_id`, `from_measure`, `to_measure`; optionally `id`, `offset` and any number of attribute columns. Events whose measures exceed the measure range of the route are clipped to it; events with `from_measure` greater than `to_measure`, an unknown route or no part on the route are reported as errors.
+**Point events.** If the events CSV has a `measure` column instead of `from_measure`/`to_measure`, each event is a point on its route: the output has the columns `id`, `route_id`, `measure`, `offset`, the attribute columns, `x`, `y` and `geometry` (`POINT`). The point lies on the route at that measure, moved sideways by the offset (positive to the left of the direction of the route). Events whose measure is outside the measure range of the route, or whose route does not exist, are reported as errors and omitted. A file cannot have both `measure` and `from_measure`/`to_measure`, and `-merge`, `-merge_by` and `-mode` do not apply to point events; `-offset`, `-keep` and `-verbose` do.
+
+For linear events, the events CSV must contain: `route_id`, `from_measure`, `to_measure`; optionally `id`, `offset` and any number of attribute columns. Events whose measures exceed the measure range of the route are clipped to it; events with `from_measure` greater than `to_measure`, an unknown route or no part on the route are reported as errors.
 
 **Merging events.** `-merge`, `-merge_by` and `-mode` merge events of the same route:
 
@@ -360,6 +362,7 @@ The output has the columns `id`, `route_id`, `from_measure`, `to_measure`, `offs
 
 ```
 spatial_lrs_segment lrs_network.lrs conditions.csv segments.csv -offset 3
+spatial_lrs_segment lrs_network.lrs signs.csv signs_points.csv
 spatial_lrs_segment lrs_network.lrs conditions.csv segments.csv -merge
 spatial_lrs_segment lrs_network.lrs pavement.csv material.csv -keep material -merge_by material -mode concatenate
 spatial_lrs_segment lrs_network.lrs reports.csv reports_dissolved.csv -merge_by type -mode dissolve

@@ -120,7 +120,7 @@ static bool loadLRSNetwork(const std::string& filename, LRSNetwork& network) {
 
 // Reads the events. attr_names receives the extra columns in file order.
 static bool readLinearEvents(const std::string& filename, std::vector<LinearEvent>& events,
-                             std::vector<std::string>& attr_names, int& skipped) {
+                             std::vector<std::string>& attr_names, int& skipped, bool& point_mode) {
   std::ifstream file(filename);
   if (!file.is_open()) {
     std::cerr << "Error: Could not open file: " << filename << "\n";
@@ -130,7 +130,7 @@ static bool readLinearEvents(const std::string& filename, std::vector<LinearEven
   std::string line;
   std::vector<std::string> headers;
   bool is_header = true;
-  int col_id = -1, col_route = -1, col_from = -1, col_to = -1, col_offset = -1;
+  int col_id = -1, col_route = -1, col_from = -1, col_to = -1, col_offset = -1, col_measure = -1;
   std::vector<int> attr_cols;
   skipped = 0;
 
@@ -152,6 +152,8 @@ static bool readLinearEvents(const std::string& filename, std::vector<LinearEven
           col_from = (int)i;
         else if (lower == "to_measure" || lower == "to" || lower == "m_to")
           col_to = (int)i;
+        else if (lower == "measure" || lower == "m")
+          col_measure = (int)i;
         else if (lower == "offset")
           col_offset = (int)i;
         else {
@@ -159,8 +161,14 @@ static bool readLinearEvents(const std::string& filename, std::vector<LinearEven
           attr_names.push_back(trim(headers[i]));
         }
       }
-      if (col_route < 0 || col_from < 0 || col_to < 0) {
-        std::cerr << "Error: The events file needs the columns route_id, from_measure and to_measure\n";
+      if (col_measure >= 0 && (col_from >= 0 || col_to >= 0)) {
+        std::cerr << "Error: The events file has both 'measure' and from_measure/to_measure; use one kind of event\n";
+        return false;
+      }
+      point_mode = col_measure >= 0;
+      if (col_route < 0 || (!point_mode && (col_from < 0 || col_to < 0))) {
+        std::cerr << "Error: The events file needs the columns route_id and either measure (point events) or "
+                     "from_measure and to_measure (linear events)\n";
         return false;
       }
       is_header = false;
@@ -174,12 +182,20 @@ static bool readLinearEvents(const std::string& filename, std::vector<LinearEven
     LinearEvent ev;
     ev.id = col_id >= 0 && !get(col_id).empty() ? get(col_id) : std::to_string(events.size() + skipped + 1);
     ev.route_id = get(col_route);
-    if (!isNumber(get(col_from)) || !isNumber(get(col_to))) {
-      skipped++;
-      continue;
+    if (point_mode) {
+      if (!isNumber(get(col_measure))) {
+        skipped++;
+        continue;
+      }
+      ev.from_measure = ev.to_measure = std::stod(get(col_measure));
+    } else {
+      if (!isNumber(get(col_from)) || !isNumber(get(col_to))) {
+        skipped++;
+        continue;
+      }
+      ev.from_measure = std::stod(get(col_from));
+      ev.to_measure = std::stod(get(col_to));
     }
-    ev.from_measure = std::stod(get(col_from));
-    ev.to_measure = std::stod(get(col_to));
     if (col_offset >= 0 && isNumber(get(col_offset)))
       ev.offset = std::stod(get(col_offset));
     ev.valid = ev.from_measure <= ev.to_measure;
@@ -215,6 +231,59 @@ static std::vector<Point2D> extractSegmentGeometry(const LRSRoute& route, double
     push(pointAtMeasure(v[i], v[i + 1], hi));
   }
   return pts;
+}
+
+// Position of a measure on the route, plus the unit direction of the segment it falls on.
+// Returns false when the measure is outside the measure range of the route.
+static bool locateMeasure(const LRSRoute& route, double m, Point2D& pos, double& dx, double& dy) {
+  const auto& v = route.vertices;
+  const double tol = 1e-9;
+  for (size_t i = 0; i + 1 < v.size(); ++i) {
+    double m0 = v[i].measure, m1 = v[i + 1].measure;
+    if (m1 <= m0 || m < m0 - tol || m > m1 + tol)
+      continue;
+    double mm = std::max(m0, std::min(m1, m));
+    pos = pointAtMeasure(v[i], v[i + 1], mm);
+    dx = v[i + 1].x - v[i].x;
+    dy = v[i + 1].y - v[i].y;
+    double len = std::sqrt(dx * dx + dy * dy);
+    if (len > 1e-12) {
+      dx /= len;
+      dy /= len;
+    }
+    return true;
+  }
+  return false;
+}
+
+struct PointResult {
+  std::string id, route_id;
+  double measure, offset, x, y;
+  std::map<std::string, std::string> attributes;
+};
+
+static bool writePointsCSV(const std::vector<PointResult>& points, const std::vector<std::string>& attr_names,
+                           const std::string& filename) {
+  std::ofstream file(filename);
+  if (!file.is_open()) {
+    std::cerr << "Error: Could not create file: " << filename << "\n";
+    return false;
+  }
+  file << "# LRS Point events\n# Geometry column: geometry\n# Points: " << points.size() << "\n";
+  file << "id,route_id,measure,offset";
+  for (const auto& a : attr_names)
+    file << "," << csvQuote(a);
+  file << ",x,y,geometry\n";
+  for (const auto& p : points) {
+    file << csvQuote(p.id) << "," << csvQuote(p.route_id) << "," << std::fixed << std::setprecision(6) << p.measure
+         << "," << p.offset;
+    for (const auto& a : attr_names) {
+      auto it = p.attributes.find(a);
+      file << "," << (it != p.attributes.end() ? csvQuote(it->second) : "");
+    }
+    file << "," << p.x << "," << p.y << ",POINT(" << p.x << " " << p.y << ")\n";
+  }
+  return true;
 }
 
 static std::vector<Point2D> applyOffset(const std::vector<Point2D>& points, double offset) {
@@ -364,7 +433,7 @@ static bool writeSegmentsCSV(const std::vector<Segment>& segments, const std::ve
 }
 
 static void printUsage() {
-  std::cerr << "spatial_lrs_segment - Create segments from linear events\n\n";
+  std::cerr << "spatial_lrs_segment - Create line segments (linear events) or points (point events) from events\n\n";
   std::cerr << "Usage: spatial_lrs_segment <network.lrs> <events.csv> <output.csv> [options]\n\n";
   std::cerr << "Options:\n";
   std::cerr << "  -offset <value>        Default lateral offset (used when the event has no offset)\n";
@@ -379,12 +448,17 @@ static void printUsage() {
   std::cerr << "                         (splits a multi-attribute event table into separate tables)\n";
   std::cerr << "  -verbose               Show detailed information\n\n";
   std::cerr << "Events CSV must contain:\n";
-  std::cerr << "  route_id, from_measure, to_measure; optional: id, offset and any attribute columns\n\n";
+  std::cerr << "  route_id and either from_measure + to_measure (linear events -> LINESTRING segments)\n";
+  std::cerr << "  or measure (point events -> POINT geometry); optional: id, offset and any attribute columns\n\n";
+  std::cerr << "Point events (measure column): the output has the columns id, route_id, measure, offset, the\n";
+  std::cerr << "attribute columns, x, y and geometry. Events whose measure is outside the measure range of the\n";
+  std::cerr << "route are reported as errors. -merge, -merge_by and -mode do not apply to point events.\n\n";
   std::cerr << "With merging, the output events are numbered 1, 2, 3... in route and measure order; the\n";
   std::cerr << "column source_event lists the original ids (separated by ;). When merged events differ in an attribute that is not in\n";
   std::cerr << "-merge_by, that attribute is left empty.\n\n";
   std::cerr << "Examples:\n";
   std::cerr << "  spatial_lrs_segment network.lrs conditions.csv segments.csv -offset 3\n";
+  std::cerr << "  spatial_lrs_segment network.lrs signs.csv signs_points.csv\n";
   std::cerr << "  spatial_lrs_segment network.lrs pavement.csv concrete.csv -merge_by material -mode concatenate\n";
   std::cerr << "  spatial_lrs_segment network.lrs pavement.csv lanes.csv -keep lanes -merge_by lanes\n";
 }
@@ -489,8 +563,14 @@ int main(int argc, char* argv[]) {
   std::vector<LinearEvent> events;
   std::vector<std::string> attr_names;
   int skipped = 0;
-  if (!readLinearEvents(events_file, events, attr_names, skipped))
+  bool point_mode = false;
+  if (!readLinearEvents(events_file, events, attr_names, skipped, point_mode))
     return 1;
+  if (point_mode && merge) {
+    std::cerr << "Error: -merge, -merge_by and -mode only apply to linear events (from_measure/to_measure)\n";
+    return 1;
+  }
+  std::cout << "Event type: " << (point_mode ? "point (measure)" : "linear (from_measure/to_measure)") << "\n";
   if (events.empty()) {
     std::cerr << "Error: No events found\n";
     return 1;
@@ -509,6 +589,51 @@ int main(int argc, char* argv[]) {
       std::cerr << "Error: -keep column '" << f << "' is not an attribute column of " << events_file << "\n";
       return 1;
     }
+
+  if (point_mode) {
+    std::vector<std::string> out_pt_attrs = has_keep ? keep : attr_names;
+    std::vector<PointResult> results;
+    int errors_pt = 0;
+    for (const auto& event : events) {
+      auto it = network.route_index.find(event.route_id);
+      if (it == network.route_index.end()) {
+        errors_pt++;
+        std::cerr << "  Event " << event.id << ": route '" << event.route_id << "' not in the network\n";
+        continue;
+      }
+      const LRSRoute& route = network.routes[it->second];
+      Point2D pos;
+      double dx = 0, dy = 0;
+      if (!locateMeasure(route, event.from_measure, pos, dx, dy)) {
+        errors_pt++;
+        std::cerr << "  Event " << event.id << ": measure " << event.from_measure << " is outside the measure range of route "
+                  << event.route_id << "\n";
+        continue;
+      }
+      PointResult r;
+      r.id = event.id;
+      r.route_id = event.route_id;
+      r.measure = event.from_measure;
+      r.offset = (event.offset != 0) ? event.offset : default_offset;
+      r.x = pos.x - dy * r.offset;
+      r.y = pos.y + dx * r.offset;
+      r.attributes = event.attributes;
+      results.push_back(r);
+      if (verbose)
+        std::cout << "  " << r.id << " -> route " << r.route_id << ", M: " << std::fixed << std::setprecision(4)
+                  << r.measure << ", point (" << r.x << ", " << r.y << ")\n";
+    }
+    if (!writePointsCSV(results, out_pt_attrs, output_file))
+      return 1;
+    std::cout << "\n========================================\n";
+    std::cout << "  POINT CREATION COMPLETE\n";
+    std::cout << "========================================\n";
+    std::cout << "Events processed: " << events.size() << "\n";
+    std::cout << "Points created: " << results.size() << "\n";
+    std::cout << "Errors: " << errors_pt << "\n";
+    std::cout << "Output written to: " << output_file << "\n";
+    return 0;
+  }
 
   std::vector<LinearEvent> valid_events;
   for (const auto& e : events)

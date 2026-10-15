@@ -92,7 +92,7 @@ Running any command with no arguments prints its usage help.
 | `spatial_shortest_path` | Shortest path over a network |
 | `spatial_lrs_create` | Create Linear Referencing System (LRS) networks |
 | `spatial_lrs_locate` | Locate point events along an LRS network |
-| `spatial_lrs_segment` | Build segments from linear events over an LRS; concatenate/dissolve events, split event tables by attribute |
+| `spatial_lrs_segment` | Build segments from linear events (or points from point events given by measure) over an LRS; concatenate/dissolve events, split event tables by attribute |
 | `spatial_lrs_calibrate` | Calibrate the measures of an LRS with points of known measure |
 | `spatial_lrs_info` | Inspect and validate an LRS network (routes, lengths, M-ranges, gaps/overlaps) |
 | `spatial_svg` | Generate SVG maps |
