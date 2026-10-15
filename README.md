@@ -5,11 +5,7 @@ A collection of C++17 command-line utilities for spatial (vector and raster) dat
 ## Requirements
 
 - `g++` (Linux/macOS) with C++17 support, or `mingw-w64` for cross-compiling to Windows
-<<<<<<< HEAD
 - The 44 stable command-line tools, plus 5 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
-=======
-- The 46 stable command-line tools, plus 6 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
->>>>>>> 9612af9c91ae858debce8b24c2c80f22bd6c523e
 - `spatial_viewer` additionally needs FLTK, vendored per platform under `fltk/` (`fltk/linux`, `fltk/mac-arm`, `fltk/mac-intel`, `fltk/windows` -- each with its own `include/` and `lib/`), so a fresh checkout can build it without installing FLTK's dev packages first. See the comments at the top of the `Makefile` for what each platform additionally needs from the system itself (X11 client + fontconfig dev headers on Linux; nothing extra on macOS; `mingw-w64` on whichever machine cross-compiles to Windows).
 
 ## Build

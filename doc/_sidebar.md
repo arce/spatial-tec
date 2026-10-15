@@ -47,14 +47,8 @@
 
 - Networks, LRS & Geocoding
   - [spatial_address](commands/network.md#spatial_address)
-<<<<<<< HEAD
   - [spatial_reverse_geocode](commands/network.md#spatial_reverse_geocode)
   - [spatial_address_validate](commands/network.md#spatial_address_validate)
-=======
-  - [spatial_address_clean](commands/network.md#spatial_address_clean)
-  - [spatial_address_validate](commands/network.md#spatial_address_validate)
-  - [spatial_reverse_geocode](commands/network.md#spatial_reverse_geocode)
->>>>>>> 9612af9c91ae858debce8b24c2c80f22bd6c523e
   - [spatial_network](commands/network.md#spatial_network)
   - [spatial_shortest_path](commands/network.md#spatial_shortest_path)
   - [spatial_lrs_create](commands/network.md#spatial_lrs_create)
