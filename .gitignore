@@ -1,4 +1,6 @@
-build/
-practicas/
+.DS_Store
+._*
 adr/
+build/
 data/
+practicas/

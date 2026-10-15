@@ -25,20 +25,14 @@ struct LRSVertex {
 struct LRSRoute {
   std::string route_id;
   std::vector<LRSVertex> vertices;
-<<<<<<< HEAD
-  double declared_length;  // total_length column of the @ROUTES section
-  bool calibrated = false;  // listed in the @CALIBRATED section (written by spatial_lrs_calibrate)
-=======
   double declared_length;  // total_length column of the @ROUTES section (geometric length)
   bool calibrated = false;  // set by spatial_lrs_calibrate
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
 };
 
 struct LRSFile {
   std::vector<LRSRoute> routes;
   std::string crs = "(not specified)";
   int skipped_lines = 0;
-  std::set<std::string> calibrated_ids;
 };
 
 struct Issue {
@@ -67,10 +61,6 @@ void printUsage() {
   std::cerr << "  LENGTH_MISMATCH        declared route length differs from the length of the geometry\n";
   std::cerr << "  START_NOT_ZERO         (warning) first measure is not 0 (not checked on calibrated routes)\n";
   std::cerr << "  ZERO_LENGTH_SEGMENT    (warning) two consecutive vertices share the same position\n\n";
-  std::cerr << "Routes calibrated with spatial_lrs_calibrate are marked in the table; for them the\n";
-  std::cerr << "ratio measure/distance may change between calibration points, so MEASURE_GAP,\n";
-  std::cerr << "MEASURE_SHORT, LENGTH_MISMATCH and START_NOT_ZERO are not checked (the measure\n";
-  std::cerr << "must still increase).\n\n";
   std::cerr << "Exit code: 0 = OK, 1 = usage/IO error or validation errors found.\n\n";
   std::cerr << "Examples:\n";
   std::cerr << "  spatial_lrs_info roads.lrs\n";
@@ -101,13 +91,6 @@ static bool loadLRS(const std::string& filename, LRSFile& out) {
 
     if (line[0] == '@') {
       section = line.substr(1);
-      continue;
-    }
-
-    if (section == "CALIBRATED") {
-      auto cp = splitCSV(line);
-      if (!cp.empty() && toLower(cp[0]) != "route_id")
-        out.calibrated_ids.insert(cp[0]);
       continue;
     }
 
@@ -154,8 +137,6 @@ static bool loadLRS(const std::string& filename, LRSFile& out) {
     }
     out.routes.push_back(route);
   }
-  for (auto& r : out.routes)
-    r.calibrated = out.calibrated_ids.count(r.route_id) > 0;
   return true;
 }
 
@@ -163,17 +144,7 @@ static double dist(const LRSVertex& a, const LRSVertex& b) {
   return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 }
 
-<<<<<<< HEAD
-// Length of the route geometry. For routes that were not calibrated the
-// measures are distances along the geometry, so it equals last M - first M.
-static double routeLength(const LRSRoute& r) {
-  if (r.vertices.size() < 2)
-    return 0;
-  if (!r.calibrated)
-    return r.vertices.back().m - r.vertices.front().m;
-=======
 static double geomLength(const LRSRoute& r) {
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
   double len = 0;
   for (size_t i = 1; i < r.vertices.size(); ++i)
     len += dist(r.vertices[i - 1], r.vertices[i]);
@@ -204,14 +175,11 @@ static void validateRoutes(const LRSFile& lrs, std::vector<Issue>& issues) {
         issues.push_back({r.route_id, (int)i + 1, "ERROR", "NEGATIVE_MEASURE", "measure " + num(v[i].m)});
     }
 
-<<<<<<< HEAD
-=======
     double glen = geomLength(r);
     double span = v.back().m - v.front().m;
     double scale = (glen > 1e-12 && span > 0) ? span / glen : 1.0;  // measure units per distance unit
     double tol = MEASURE_TOL * std::max(1.0, scale);
 
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
     if (!r.calibrated && std::fabs(v.front().m) > MEASURE_TOL)
       issues.push_back({r.route_id, 1, "WARNING", "START_NOT_ZERO", "first measure is " + num(v.front().m)});
 
@@ -227,13 +195,7 @@ static void validateRoutes(const LRSFile& lrs, std::vector<Issue>& issues) {
       if (dm <= 0) {
         issues.push_back({r.route_id, (int)i + 1, "ERROR", "MEASURE_OVERLAP",
                           where + "measure goes from " + num(v[i - 1].m) + " to " + num(v[i].m)});
-<<<<<<< HEAD
-      } else if (r.calibrated) {
-        // calibrated routes: the ratio measure/distance changes between calibration points
-      } else if (dm - d > MEASURE_TOL) {
-=======
       } else if (!r.calibrated && dm - d * scale > tol) {
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
         issues.push_back({r.route_id, (int)i + 1, "ERROR", "MEASURE_GAP",
                           where + "measure grows " + num(dm) + " over a distance of " + num(d) +
                               " (expected " + num(d * scale) + ")"});
@@ -244,12 +206,7 @@ static void validateRoutes(const LRSFile& lrs, std::vector<Issue>& issues) {
       }
     }
 
-<<<<<<< HEAD
-    double len = v.back().m - v.front().m;
-    if (!r.calibrated && !std::isnan(r.declared_length) && std::fabs(len - r.declared_length) > MEASURE_TOL)
-=======
     if (!std::isnan(r.declared_length) && std::fabs(glen - r.declared_length) > MEASURE_TOL)
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
       issues.push_back({r.route_id, 0, "ERROR", "LENGTH_MISMATCH",
                         "geometry length is " + num(glen) + " but declared length is " + num(r.declared_length)});
   }
@@ -333,11 +290,7 @@ int main(int argc, char* argv[]) {
   size_t total_vertices = 0;
   for (const auto& r : lrs.routes) {
     total_vertices += r.vertices.size();
-<<<<<<< HEAD
-    total_len += routeLength(r);
-=======
     total_len += geomLength(r);
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
     for (const auto& v : r.vertices) {
       minx = std::min(minx, v.x);
       maxx = std::max(maxx, v.x);
@@ -357,8 +310,6 @@ int main(int argc, char* argv[]) {
   if (selected) {
     std::cout << "\nRoute " << selected->route_id << ":\n";
     std::cout << "  Vertices: " << selected->vertices.size() << "\n";
-    if (selected->calibrated)
-      std::cout << "  Calibrated: yes\n";
     if (!selected->vertices.empty())
       std::cout << "  M-range: " << num(selected->vertices.front().m, 2) << " - "
                 << num(selected->vertices.back().m, 2) << "\n";
@@ -371,31 +322,15 @@ int main(int argc, char* argv[]) {
                 << "  " << std::setw(11) << num(v.y, 4) << "  " << std::setw(11) << num(v.m, 4) << "\n";
     }
   } else {
-<<<<<<< HEAD
-    bool any_calibrated = !lrs.calibrated_ids.empty();
-    std::cout << "\n  Route   Vertices   Length        M-range" << (any_calibrated ? "            Calibrated" : "")
-              << "\n";
-    for (const auto& r : lrs.routes) {
-      double len = routeLength(r);
-=======
     std::cout << "\n  Route   Vertices   Length        M-range            Calibrated\n";
     for (const auto& r : lrs.routes) {
       double len = geomLength(r);
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
       std::cout << "  " << std::left << std::setw(8) << r.route_id << std::setw(11) << r.vertices.size()
                 << std::setw(14) << num(len, 4);
       std::string range;
       if (!r.vertices.empty())
         range = num(r.vertices.front().m, 2) + " - " + num(r.vertices.back().m, 2);
-<<<<<<< HEAD
-      if (any_calibrated)
-        std::cout << std::setw(19) << range << (r.calibrated ? "yes" : "no");
-      else
-        std::cout << range;
-      std::cout << "\n";
-=======
       std::cout << std::setw(19) << range << (r.calibrated ? "yes" : "no") << "\n";
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
     }
   }
 

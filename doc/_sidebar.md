@@ -56,7 +56,6 @@
   - [spatial_lrs_segment](commands/network.md#spatial_lrs_segment)
   - [spatial_lrs_calibrate](commands/network.md#spatial_lrs_calibrate)
   - [spatial_lrs_info](commands/network.md#spatial_lrs_info)
-  - [spatial_lrs_calibrate](commands/network.md#spatial_lrs_calibrate)
 
 - Cartography & Visualization
   - [spatial_colormap](commands/cartography.md#spatial_colormap)

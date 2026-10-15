@@ -162,7 +162,7 @@ LRSNetwork loadLRSNetwork(const std::string& filename) {
   return network;
 }
 
-std::vector<PointEvent> readPointEvents(const std::string& filename) {
+std::vector<PointEvent> readPointEvents(const std::string& filename, const std::string& route_column = "route_id") {
   std::vector<PointEvent> events;
   std::ifstream file(filename);
   if (!file.is_open()) {
@@ -195,7 +195,7 @@ std::vector<PointEvent> readPointEvents(const std::string& filename) {
         std::string lower = toLower(headers[i]);
         if (lower == "id" || lower == "event_id") {
           col_id = i;
-        } else if (lower == "route_id" || lower == "route") {
+        } else if (lower == toLower(route_column) || (route_column == "route_id" && lower == "route")) {
           col_route_id = i;
         } else if (lower == "geometry" || lower == "geom" || lower == "wkt") {
           col_geometry = i;
@@ -386,11 +386,14 @@ int main(int argc, char* argv[]) {
   std::string output_file = argv[3];
   double max_distance = 0.01;
   bool verbose = false;
+  std::string route_column = "route_id";
 
   for (int i = 4; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "-max_dist" && i + 1 < argc) {
       max_distance = std::stod(argv[++i]);
+    } else if (arg == "-route_id" && i + 1 < argc) {
+      route_column = argv[++i];
     } else if (arg == "-verbose") {
       verbose = true;
     }
@@ -413,7 +416,7 @@ int main(int argc, char* argv[]) {
 
   std::cout << "Routes loaded: " << network.routes.size() << "\n";
 
-  std::vector<PointEvent> events = readPointEvents(events_file);
+  std::vector<PointEvent> events = readPointEvents(events_file, route_column);
 
   if (events.empty()) {
     std::cerr << "Error: No events found\n";

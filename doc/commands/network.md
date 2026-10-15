@@ -435,11 +435,7 @@ spatial_lrs_info <network.lrs> [options]
 
 **DESCRIPTION**
 
-<<<<<<< HEAD
-Reads a `.lrs` file created by `spatial_lrs_create` and reports the CRS, the number of routes and vertices, the total length, the bounding box, and, for each route, its vertex count, length and measure range (M-range). When the network contains routes calibrated with `spatial_lrs_calibrate`, the table also has a `Calibrated` column. With `-route`, it lists every vertex of that route with its measure.
-=======
 Reads a `.lrs` file created by `spatial_lrs_create` and reports the CRS, the number of routes and vertices, the total length, the bounding box, and, for each route, its vertex count, length of the geometry, measure range (M-range) and whether it was calibrated with `spatial_lrs_calibrate`. With `-route`, it lists every vertex of that route with its measure.
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
 
 With `-validate`, it also checks the M-values of every route and prints the issues found. Issues are errors (the exit code becomes `1`) or warnings.
 
@@ -455,11 +451,7 @@ With `-validate`, it also checks the M-values of every route and prints the issu
 | `START_NOT_ZERO` | warning | first measure is not 0 |
 | `ZERO_LENGTH_SEGMENT` | warning | two consecutive vertices share the same position |
 
-<<<<<<< HEAD
-On calibrated routes the ratio between measure and distance changes between calibration points, so `MEASURE_GAP`, `MEASURE_SHORT`, `LENGTH_MISMATCH` and `START_NOT_ZERO` are not checked there (the measure must still increase), and the length shown is that of the geometry. Measure and distance are compared with a tolerance of `0.001`. A network created with `spatial_lrs_create` always passes validation; the checks are useful for `.lrs` files that were edited by hand or produced by other tools.
-=======
 The expected measure increment between two vertices is the distance between them multiplied by the measure/distance ratio of the route (1 for a network created by `spatial_lrs_create`, or the ratio given by `from_measure`/`to_measure`); the comparison uses a tolerance of `0.001`. These two checks and `START_NOT_ZERO` are skipped on routes calibrated with `spatial_lrs_calibrate`, whose ratio legitimately changes between calibration points; the measures must still increase. A network created with `spatial_lrs_create` always passes validation; the checks are useful for `.lrs` files that were edited by hand or produced by other tools.
->>>>>>> 0aa688e6a286b99191077a851e82c35b7c65fd09
 
 **OPTIONS**
 
@@ -483,53 +475,7 @@ spatial_lrs_info roads.lrs -validate -report lrs_errors.csv
 
 **SEE ALSO**
 
-[spatial_lrs_create](#spatial_lrs_create), [spatial_lrs_locate](#spatial_lrs_locate), [spatial_lrs_segment](#spatial_lrs_segment), [spatial_lrs_calibrate](#spatial_lrs_calibrate)
-
----
-
-## spatial_lrs_calibrate
-
-**NAME**
-
-`spatial_lrs_calibrate` — calibrate the measures of an LRS network using points of known measure
-
-**SYNOPSIS**
-
-```
-spatial_lrs_calibrate <network.lrs> <points.csv> <output.lrs> [options]
-```
-
-**DESCRIPTION**
-
-The measures written by `spatial_lrs_create` are distances along the digitized geometry. Real roads use the kilometers marked by mileposts, which rarely match that distance. `spatial_lrs_calibrate` adjusts the measures of each route using calibration points whose true measure is known.
-
-Each point is projected onto its route and a vertex is created at the projection (unless it coincides with an existing vertex) carrying the measure of the point. The remaining vertices get measures interpolated in proportion to the distance along the route between the two surrounding calibration points. Before the first point and after the last one the slope (measure per unit of distance) of the nearest calibrated interval is used; with a single point the slope is 1.
-
-The points file needs a route column, a measure column and the position of each point, either as a `geometry` column (WKT `POINT`) or as `x` and `y` columns. The measures of the points of a route must increase along the route; a route that violates this is not calibrated and is reported, and the command exits with `1` after processing the other routes. Routes without points are copied unchanged. Calibrated routes are listed in a `@CALIBRATED` section of the output file.
-
-**OPTIONS**
-
-| Option | Description |
-|---|---|
-| `-max_dist <value>` | Maximum distance from a point to its route; farther points are ignored with a warning (default `1.0`) |
-| `-route_id <col>` | Name of the route column in the points file (default `route_id`) |
-| `-measure <col>` | Name of the measure column in the points file (default `measure`) |
-| `-verbose` | Show the result for every route |
-
-**EXIT STATUS**
-
-`0` if every route with points was calibrated; `1` on a usage or I/O error, if no route could be calibrated, or if some route could not be calibrated.
-
-**EXAMPLES**
-
-```
-spatial_lrs_calibrate roads.lrs mileposts.csv roads_km.lrs -max_dist 5
-spatial_lrs_calibrate roads.lrs mileposts.csv roads_km.lrs -measure km -verbose
-```
-
-**SEE ALSO**
-
-[spatial_lrs_create](#spatial_lrs_create), [spatial_lrs_info](#spatial_lrs_info), [spatial_lrs_locate](#spatial_lrs_locate)
+[spatial_lrs_create](#spatial_lrs_create), [spatial_lrs_locate](#spatial_lrs_locate), [spatial_lrs_segment](#spatial_lrs_segment)
 
 ---
 
