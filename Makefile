@@ -173,7 +173,6 @@ CONSOLE_PROGRAMS := \
 # Mercator, sin dependencia de PROJ/GDAL) y doc/commands/projection.md para
 # el detalle de uso.
 #
-<<<<<<< HEAD
 # spatial_lrs_info tambien se movio: lee el .lrs y reporta estadisticas por
 # ruta (vertices, longitud, rango de medidas, bounding box), y con -validate
 # detecta huecos/traslapes/medidas fuera de rango (ver doc/commands/network.md).
@@ -184,9 +183,6 @@ CONSOLE_PROGRAMS := \
 # casa y similitud de nombres.
 #
 # Los 5 restantes no son uno por cada operacion imaginable: donde varias
-=======
-# Los 6 restantes no son uno por cada operacion imaginable: donde varias
->>>>>>> 9612af9c91ae858debce8b24c2c80f22bd6c523e
 # operaciones son variantes cercanas de la misma tarea, comparten un solo
 # binario con un flag -operation/-mode, exactamente como ya hacen
 # spatial_vectorize (-contour/-polygonize/-points), spatial_distance

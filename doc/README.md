@@ -12,10 +12,14 @@ This site is the full command reference, written in the style of Unix `man` page
 | [Raster Processing](commands/raster.md) | `spatial_calc`, `spatial_clip_raster`, `spatial_filter_raster`, `spatial_merge_raster`, `spatial_rasterize`, `spatial_vectorize`, `spatial_resample`, `spatial_reclass`, `spatial_rat`, `spatial_georeference` |
 | [Spatial Queries & Analysis](commands/analysis.md) | `spatial_query`, `spatial_join`, `spatial_difference`, `spatial_distance`, `spatial_filter_vector`, `spatial_interpolate`, `spatial_statistics`, `spatial_zonal` |
 <<<<<<< HEAD
+<<<<<<< HEAD
 | [Networks, LRS & Geocoding](commands/network.md) | `spatial_address`, `spatial_reverse_geocode`, `spatial_address_validate`, `spatial_network`, `spatial_shortest_path`, `spatial_lrs_create`, `spatial_lrs_locate`, `spatial_lrs_segment`, `spatial_lrs_calibrate`, `spatial_lrs_info` |
 =======
 | [Networks, LRS & Geocoding](commands/network.md) | `spatial_address`, `spatial_address_clean`, `spatial_address_validate`, `spatial_reverse_geocode`, `spatial_network`, `spatial_shortest_path`, `spatial_lrs_create`, `spatial_lrs_locate`, `spatial_lrs_segment` |
 >>>>>>> 9612af9c91ae858debce8b24c2c80f22bd6c523e
+=======
+| [Networks, LRS & Geocoding](commands/network.md) | `spatial_address`, `spatial_reverse_geocode`, `spatial_address_validate`, `spatial_network`, `spatial_shortest_path`, `spatial_lrs_create`, `spatial_lrs_locate`, `spatial_lrs_segment`, `spatial_lrs_info` |
+>>>>>>> 6b762505aeb4e48a07829e4b962d06822f23e2b5
 | [Cartography & Visualization](commands/cartography.md) | `spatial_colormap`, `spatial_svg`, `spatial_viewer`, `spatial_editor` |
 | [Coordinate Reference Systems](commands/projection.md) | `spatial_reproject` |
 
