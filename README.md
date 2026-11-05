@@ -5,7 +5,7 @@ A collection of C++17 command-line utilities for spatial (vector and raster) dat
 ## Requirements
 
 - `g++` (Linux/macOS) with C++17 support, or `mingw-w64` for cross-compiling to Windows
-- The 48 stable command-line tools, plus 5 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+- The 51 stable command-line tools, plus 3 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
 - `spatial_viewer` additionally needs FLTK, vendored per platform under `fltk/` (`fltk/linux`, `fltk/mac-arm`, `fltk/mac-intel`, `fltk/windows` -- each with its own `include/` and `lib/`), so a fresh checkout can build it without installing FLTK's dev packages first. See the comments at the top of the `Makefile` for what each platform additionally needs from the system itself (X11 client + fontconfig dev headers on Linux; nothing extra on macOS; `mingw-w64` on whichever machine cross-compiles to Windows).
 
 ## Build
@@ -88,8 +88,11 @@ Running any command with no arguments prints its usage help.
 | `spatial_zonal` | Zonal statistics |
 | `spatial_reverse_geocode` | Find the approximate street address of points |
 | `spatial_address_validate` | Validate the numbering ranges of a street layer |
-| `spatial_network` | Build routable networks |
-| `spatial_shortest_path` | Shortest path over a network |
+| `spatial_network` | Build routable networks (nodes and edges) from street lines |
+| `spatial_shortest_path` | Shortest path over a network, by length or travel time |
+| `spatial_network_info` | Inspect and validate a network (components, isolated nodes, invalid edges) |
+| `spatial_network_service` | Service areas (`-mode alloc`) and isochrones (`-mode iso`) from a node |
+| `spatial_tsp` | Travelling salesman: best order to visit a set of stops over a network (exact or heuristic) |
 | `spatial_lrs_create` | Create Linear Referencing System (LRS) networks |
 | `spatial_lrs_locate` | Locate point events along an LRS network |
 | `spatial_lrs_segment` | Build segments from linear events (or points from point events given by measure) over an LRS; concatenate/dissolve events, split event tables by attribute |

@@ -140,7 +140,10 @@ CONSOLE_PROGRAMS := \
     spatial_tiff2asc \
     spatial_colormap \
     spatial_network \
+    spatial_network_info \
+    spatial_network_service \
     spatial_shortest_path \
+    spatial_tsp \
     spatial_svg \
     spatial_lrs_create \
     spatial_lrs_locate \
@@ -180,7 +183,13 @@ CONSOLE_PROGRAMS := \
 # spatial_address -- lectura de la capa de calles, interpolacion de numeros de
 # casa y similitud de nombres.
 #
-# Los 5 restantes no son uno por cada operacion imaginable: donde varias
+# spatial_network_info y spatial_network_service tambien se movieron: ya
+# funcionan sobre el formato .network de spatial_network (version 2, nodos y
+# aristas; logica comun en include/core/spatial_network.hpp). Informacion y
+# validacion de conectividad; areas de servicio (-mode alloc) e isocronas
+# (-mode iso). Ver doc/commands/network.md.
+#
+# Los 3 restantes no son uno por cada operacion imaginable: donde varias
 # operaciones son variantes cercanas de la misma tarea, comparten un solo
 # binario con un flag -operation/-mode, exactamente como ya hacen
 # spatial_vectorize (-contour/-polygonize/-points), spatial_distance
@@ -190,9 +199,7 @@ CONSOLE_PROGRAMS := \
 STUB_PROGRAMS := \
     spatial_terrain \
     spatial_hydrology \
-    spatial_cost \
-    spatial_network_info \
-    spatial_network_service
+    spatial_cost
 CONSOLE_PROGRAMS += $(STUB_PROGRAMS)
 ALL_PROGRAMS := $(CONSOLE_PROGRAMS) spatial_viewer spatial_georeference spatial_editor
 .PHONY: all clean windows linux mac macArm macIntel help $(ALL_PROGRAMS)
@@ -450,7 +457,10 @@ help:
 	@echo "  spatial_reverse_geocode  - Reverse geocoding (estimate the address of a point)"
 	@echo "  spatial_svg              - Generate SVG map from vector data"
 	@echo "  spatial_network          - Build network from street lines"
-	@echo "  spatial_shortest_path    - Find shortest path between two nodes"
+	@echo "  spatial_shortest_path    - Find shortest path between two nodes (-cost length|time)"
+	@echo "  spatial_network_info     - Network information, optionally -validate"
+	@echo "  spatial_network_service  - Service areas / isochrones: -mode alloc|iso"
+	@echo "  spatial_tsp              - Travelling salesman: best visiting order of a set of stops"
 	@echo "  spatial_viewer           - Interactive graphical layer viewer"
 	@echo "  spatial_georeference     - Georeference a PNG/JPEG image into a .asc raster via control points"
 	@echo "  spatial_editor           - Create and edit point/line/polygon features, save as spatial CSV"
@@ -468,8 +478,6 @@ help:
 	@echo "  spatial_terrain            - Terrain analysis: -operation slope|aspect|hillshade|curvature"
 	@echo "  spatial_hydrology          - DEM conditioning: -operation fill|flow_direction|flow_accumulation"
 	@echo "  spatial_cost               - Cost-distance analysis: -operation cost|viewshed|corridor"
-	@echo "  spatial_network_info       - Network information, optionally -validate"
-	@echo "  spatial_network_service    - Service areas / isochrones: -mode alloc|iso"
 	@echo ""
 	@echo "Cross-platform build targets: make linux | mac | macArm | macIntel | windows"
 .PHONY: all clean test help
