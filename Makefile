@@ -31,6 +31,17 @@
 #                                fltk/mac-intel -- lets one Mac (Apple
 #                                Silicon or Intel) produce a binary for the
 #                                other architecture too
+#   make linux-mac            -> macOS only: cross-compiles the console tools
+#                                (NOT the FLTK GUI tools) to static Linux x86-64
+#                                binaries in build-linux-x64/ with a Linux
+#                                cross-compiler. One-time setup:
+#                                  brew tap messense/macos-cross-toolchains
+#                                  brew install messense/macos-cross-toolchains/x86_64-unknown-linux-gnu
+#                                Another toolchain prefix can be given with
+#                                LINUX_CROSS_PREFIX=... (e.g. aarch64-unknown-linux-gnu).
+#                                The GUI tools need Linux's X11 libraries, so
+#                                build them with `make linux` on a Linux machine
+#                                (or in Docker).
 #   make windows              -> cross-compiles every program to build/*.exe
 #                                for Windows using mingw-w64 -- run this
 #                                from Linux or macOS (see the WINDOWS
@@ -202,7 +213,7 @@ STUB_PROGRAMS := \
     spatial_cost
 CONSOLE_PROGRAMS += $(STUB_PROGRAMS)
 ALL_PROGRAMS := $(CONSOLE_PROGRAMS) spatial_viewer spatial_georeference spatial_editor
-.PHONY: all clean windows linux mac macArm macIntel help $(ALL_PROGRAMS)
+.PHONY: all clean windows linux linux-mac mac macArm macIntel help $(ALL_PROGRAMS)
 all: $(ALL_PROGRAMS)
 # Re-invokes this same Makefile with PLATFORM forced, so `make windows` (or
 # linux/mac) works no matter what the host-OS auto-detection above landed
@@ -215,6 +226,21 @@ windows:
 	$(MAKE) PLATFORM=windows all
 linux:
 	$(MAKE) PLATFORM=linux all
+# Linux cross-build from macOS (console tools only, statically linked so the
+# binaries run on any Linux of that CPU without extra libraries). CONSOLE_ONLY=1
+# skips the FLTK lookup in the LINUX/MAC section, which a Mac doesn't have.
+LINUX_CROSS_PREFIX ?= x86_64-unknown-linux-gnu
+LINUX_CROSS_DIR    ?= build-linux-x64
+linux-mac:
+	@command -v $(LINUX_CROSS_PREFIX)-g++ >/dev/null 2>&1 || { \
+	  echo "Error: $(LINUX_CROSS_PREFIX)-g++ not found in PATH."; \
+	  echo "Install it with:"; \
+	  echo "  brew tap messense/macos-cross-toolchains"; \
+	  echo "  brew install messense/macos-cross-toolchains/x86_64-unknown-linux-gnu"; \
+	  exit 1; }
+	$(MAKE) PLATFORM=linux CONSOLE_ONLY=1 BUILD_DIR=$(LINUX_CROSS_DIR) \
+	    CXX=$(LINUX_CROSS_PREFIX)-g++ OPTFLAGS="-O2 -static -s" $(CONSOLE_PROGRAMS)
+	@echo "Linux binaries (console tools only) are in $(LINUX_CROSS_DIR)/"
 mac:
 	$(MAKE) PLATFORM=mac all
 macArm:
@@ -384,12 +410,14 @@ else
     # fltk/ is in .gitignore, so a fresh clone on Linux has no vendored copy.
     # Fall back to the system FLTK (apt install libfltk1.3-dev) via fltk-config,
     # which also gets the right jpeg/png/X11 flags for this distro.
-    ifeq ($(shell command -v fltk-config 2>/dev/null),)
-      $(error No vendored FLTK in $(VENDOR_FLTK_DIR)/lib and fltk-config not found. Copy the fltk/ folder here or run: sudo apt install libfltk1.3-dev)
+    ifneq ($(CONSOLE_ONLY),1)
+      ifeq ($(shell command -v fltk-config 2>/dev/null),)
+        $(error No vendored FLTK in $(VENDOR_FLTK_DIR)/lib and fltk-config not found. Copy the fltk/ folder here or run: sudo apt install libfltk1.3-dev)
+      endif
+      FLTK_LDFLAGS := $(shell fltk-config --use-images --ldflags)
+      VENDOR_FLTK_DIR := .
+      FLTK_CXXFLAGS_SYS := $(shell fltk-config --cxxflags)
     endif
-    FLTK_LDFLAGS := $(shell fltk-config --use-images --ldflags)
-    VENDOR_FLTK_DIR := .
-    FLTK_CXXFLAGS_SYS := $(shell fltk-config --cxxflags)
   endif
 endif
 FLTK_CXXFLAGS := $(if $(FLTK_CXXFLAGS_SYS),$(FLTK_CXXFLAGS_SYS),-I$(VENDOR_FLTK_DIR)/include)
@@ -419,7 +447,7 @@ spatial_viewer: $(BUILD_DIR)/spatial_viewer$(EXE_EXT)
 spatial_georeference: $(BUILD_DIR)/spatial_georeference$(EXE_EXT)
 spatial_editor: $(BUILD_DIR)/spatial_editor$(EXE_EXT)
 clean:
-	rm -rf $(BUILD_DIR) output_*.csv output_*.asc
+	rm -rf $(BUILD_DIR) $(LINUX_CROSS_DIR) output_*.csv output_*.asc
 help:
 	@echo "Spatial TEC - Commands:"
 	@echo "  spatial_info             - Get file information"
