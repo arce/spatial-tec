@@ -139,29 +139,60 @@ spatial_simplify <input> <output> [options]
 
 **DESCRIPTION**
 
-Reduces the number of vertices in lines and polygons while preserving their overall shape.
+Reduces the number of vertices in lines and polygons while preserving their overall shape. Points are never changed. Attributes are copied unchanged.
+
+Four methods are available with `-method`:
+
+| Method | Parameter | What it does |
+|---|---|---|
+| `douglas` (default) | `-tolerance` (distance) or `-factor` | Douglas-Peucker. Keeps a vertex when it lies farther than the tolerance from the line that joins its already-kept neighbours. Preserves sharp features (spikes, corners). Same result as GEOS `simplify(tolerance, preserve_topology=False)`. |
+| `visvalingam` | `-tolerance` (area) or `-factor` | Visvalingam-Whyatt. Repeatedly removes the vertex whose triangle with its two neighbours has the smallest area, until the smallest area reaches the tolerance. Smooths small features and removes narrow spikes. |
+| `radial` | `-tolerance` (distance) | Radial distance. Removes the vertices closer than the tolerance to the last vertex kept. Fast; ignores the shape of the line. |
+| `nth` | `-n` | Keeps one vertex out of every `n` (the first and the last are always kept). Fastest; ignores both distances and shape. |
+
+Units follow the CRS of the data: the `douglas` and `radial` tolerance is a distance in CRS units, the `visvalingam` tolerance is an area in CRS units squared. With geographic coordinates (degrees) a tolerance is not a constant distance on the ground; reproject first with `spatial_reproject` and use meters.
+
+`-factor <f>` fixes the fraction of the vertices to remove from every line and ring (`0.7` keeps about 30% of them) and is available for `douglas` and `visvalingam`; it is an alternative to `-tolerance`, not a complement.
+
+**Minimum geometry.** Every line keeps its first and last vertex (at least 2 vertices) and every closed ring at least 3 different vertices (a triangle), so a small polygon or a short line never collapses; a note reports how many were reduced to that minimum. A line whose first and last vertices coincide is treated as a ring. Rings of a polygon (outer ring and holes) and the parts of `MULTILINESTRING`/`MULTIPOLYGON` features are simplified separately.
+
+**Topology.** By default every line and ring is simplified on its own, so two neighbouring polygons can stop sharing exactly the same border (gaps and overlaps) and a street can stop touching the street it joins. With `-topology` the vertices where lines or rings meet (junctions, points where three or more polygons touch, end points of open lines) are kept, and each stretch between two of them is simplified once, so shared borders remain identical in all the features that use them. With `-topology`, `-factor` applies to each stretch.
+
+**Limitations.**
+
+- Neither mode checks that the result is free of self-intersections; with a very large tolerance on shapes with narrow inlets a ring can cross itself. Check the output with `spatial_validate`.
+- Polygon holes are simplified ring by ring, but the CSV reader/writer of Spatial TEC keeps all the rings of a `POLYGON` in a single coordinate list.
+- Coordinates in the output are written with 6 decimals.
 
 **OPTIONS**
 
 | Option | Description |
 |---|---|
-| `-tolerance <value>` | Simplification tolerance (Douglas-Peucker) |
-| `-factor <value>` | Reduction factor (0–1; e.g. `0.5` = 50% reduction) |
-| `-method <method>` | `douglas` or `visvalingam` (default: `douglas`) |
-| `-types <list>` | Types to simplify: `point,line,polygon` (default: `line,polygon`) |
-| `-verbose` | Show detailed statistics |
+| `-method <method>` | `douglas`, `visvalingam`, `radial` or `nth` (default: `douglas`) |
+| `-tolerance <value>` | `douglas`/`radial`: distance; `visvalingam`: minimum triangle area. Must be greater than 0 |
+| `-factor <value>` | `douglas`/`visvalingam`: fraction of the vertices of each line/ring to remove, `0 < f ≤ 1`. Use instead of `-tolerance` |
+| `-n <value>` | `nth`: keep every n-th vertex (whole number ≥ 2) |
+| `-types <list>` | Types to simplify: `line,polygon` (default). `point` is accepted but points are never changed |
+| `-topology` | Keep shared borders and junctions identical between features |
+| `-verbose` | Show detailed statistics by type |
+| `-help` | Show the usage |
+
+`douglas` and `visvalingam` need exactly one of `-tolerance` or `-factor`; `radial` needs `-tolerance`; `nth` needs `-n`. Other combinations are rejected.
 
 **EXAMPLES**
 
 ```
-spatial_simplify curves.csv simplified_curves.csv -tolerance 0.001
-spatial_simplify polygons.csv simplified_polygons.csv -factor 0.5
-spatial_simplify data.csv simplified_data.csv -tolerance 0.01 -verbose
+spatial_simplify rivers.csv rivers_s.csv -tolerance 50
+spatial_simplify districts.csv districts_s.csv -tolerance 25 -topology
+spatial_simplify coast.csv coast_s.csv -method visvalingam -factor 0.8
+spatial_simplify tracks.csv tracks_s.csv -method radial -tolerance 10
+spatial_simplify tracks.csv tracks_n.csv -method nth -n 5
+spatial_simplify data.csv simplified.csv -tolerance 20 -types polygon -verbose
 ```
 
 **SEE ALSO**
 
-[spatial_centroid](#spatial_centroid)
+[spatial_validate](#spatial_validate), [spatial_centroid](#spatial_centroid), [spatial_reproject](projection.md#spatial_reproject)
 
 ---
 

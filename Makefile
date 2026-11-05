@@ -438,7 +438,7 @@ help:
 	@echo "  spatial_resample         - Change resolution of rasters"
 	@echo "  spatial_statistics       - Calculate spatial statistics"
 	@echo "  spatial_difference       - Find features in one dataset not in another"
-	@echo "  spatial_simplify         - Simplify vector geometries"
+	@echo "  spatial_simplify         - Simplify lines/polygons (Douglas-Peucker, Visvalingam, radial, n-th)"
 	@echo "  spatial_centroid         - Calculate centroids of geometries"
 	@echo "  spatial_union            - Union/dissolve polygons"
 	@echo "  spatial_distance         - Calculate distances between features"

@@ -82,7 +82,7 @@ Running any command with no arguments prints its usage help.
 | `spatial_rasterize` | Vector → raster |
 | `spatial_vectorize` | Raster → vector (contours, polygons, points) |
 | `spatial_resample` | Change raster resolution |
-| `spatial_simplify` | Geometry simplification |
+| `spatial_simplify` | Geometry simplification (Douglas-Peucker, Visvalingam, radial distance, n-th point; optional shared-border preservation) |
 | `spatial_union` | Union/dissolve polygons |
 | `spatial_statistics` | Spatial statistics |
 | `spatial_zonal` | Zonal statistics |
