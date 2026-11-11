@@ -5,7 +5,7 @@ A collection of C++17 command-line utilities for spatial (vector and raster) dat
 ## Requirements
 
 - `g++` (Linux/macOS) with C++17 support, or `mingw-w64` for cross-compiling to Windows
-- The 51 stable command-line tools, plus 3 placeholder commands (see below), are plain C++17/STL and build the same way on Linux, macOS and Windows
+- The 55 command-line tools are plain C++17/STL and build the same way on Linux, macOS and Windows
 - `spatial_viewer` additionally needs FLTK, vendored per platform under `fltk/` (`fltk/linux`, `fltk/mac-arm`, `fltk/mac-intel`, `fltk/windows` -- each with its own `include/` and `lib/`), so a fresh checkout can build it without installing FLTK's dev packages first. See the comments at the top of the `Makefile` for what each platform additionally needs from the system itself (X11 client + fontconfig dev headers on Linux; nothing extra on macOS; `mingw-w64` on whichever machine cross-compiles to Windows).
 
 ## Build
@@ -74,7 +74,7 @@ Running any command with no arguments prints its usage help.
 | `spatial_distance` | Distances between features |
 | `spatial_filter_raster` | Filter raster cells by value |
 | `spatial_filter_vector` | Filter vectors by attributes |
-| `spatial_interpolate` | Spatial interpolation (IDW, kriging, RBF, etc.) |
+| `spatial_interpolate` | Spatial interpolation of points to a raster (nearest, IDW, TIN linear, RBF; simplified natural neighbor and kriging) |
 | `spatial_join` | Spatial attribute join |
 | `spatial_query` | Spatial queries (within, intersects, nearest...) |
 | `spatial_merge_raster` | Mosaic multiple rasters |
@@ -82,6 +82,10 @@ Running any command with no arguments prints its usage help.
 | `spatial_rasterize` | Vector → raster |
 | `spatial_vectorize` | Raster → vector (contours, polygons, points) |
 | `spatial_resample` | Change raster resolution |
+| `spatial_terrain` | Terrain analysis from a DEM: slope, aspect, hillshade, curvature |
+| `spatial_hydrology` | DEM hydrology: fill sinks, D8 flow direction, flow accumulation, watersheds |
+| `spatial_cost` | Cost distance, least-cost corridor and viewshed |
+| `spatial_tin` | TIN from elevation points: triangles, topology, slope/aspect per triangle, elevation at points, cut and fill volumes |
 | `spatial_simplify` | Geometry simplification (Douglas-Peucker, Visvalingam, radial distance, n-th point; optional shared-border preservation) |
 | `spatial_union` | Union/dissolve polygons |
 | `spatial_statistics` | Spatial statistics |

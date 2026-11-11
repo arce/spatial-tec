@@ -286,6 +286,192 @@ spatial_resample elev.asc elev_half.asc -scale 2 -method average
 
 ---
 
+## spatial_terrain
+
+**NAME**
+
+`spatial_terrain` — slope, aspect, hillshade and curvature from a DEM
+
+**SYNOPSIS**
+
+```
+spatial_terrain <input.asc> <output.asc> -operation <slope|aspect|hillshade|curvature> [options]
+```
+
+**DESCRIPTION**
+
+Derives a terrain raster from a digital elevation model (DEM). The output has the same extent, cell size and NODATA value as the input. Slope, aspect and hillshade use Horn's method on the 3x3 window around each cell:
+
+```
+a b c        dz/dx = ((c + 2f + i) - (a + 2d + g)) / (8 * cellsize)
+d e f        dz/dy = ((g + 2h + i) - (a + 2b + c)) / (8 * cellsize)
+g h i
+```
+
+Curvature uses the Zevenbergen-Thorne polynomial and is reported multiplied by 100 (positive = convex, negative = concave). Cells outside the grid, or with a NODATA neighbor, reuse the value of the center cell; cells whose own value is NODATA stay NODATA.
+
+The cell size must be in the same units as the elevations (for example meters). Spatial TEC rasters carry no coordinate system, so for a DEM in geographic degrees the command prints a warning: reproject the DEM first (`spatial_reproject`) or use `-z_factor` to convert the elevation units.
+
+**OPERATIONS**
+
+| Operation | Result |
+|---|---|
+| `slope` | Steepness: `atan(sqrt(dz/dx² + dz/dy²))` in degrees (0-90), or `100 * sqrt(dz/dx² + dz/dy²)` in percent |
+| `aspect` | Direction the slope faces, in degrees clockwise from north (0 = N, 90 = E, 180 = S, 270 = W). Flat cells get `-flat_value` |
+| `hillshade` | Illumination of the surface by a light source, from 0 (shadow) to 255 |
+| `curvature` | Surface curvature (`general`, `profile` or `planform`) |
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-operation <op>` | `slope`, `aspect`, `hillshade` or `curvature` (required) |
+| `-units <degrees\|percent>` | Slope units (default: `degrees`) |
+| `-z_factor <value>` | Multiplier applied to the elevations (default: `1.0`). Vertical exaggeration, or conversion of z units to the horizontal units |
+| `-flat_value <value>` | Aspect value for flat cells (default: `-1`) |
+| `-azimuth <value>` | Direction of the light source, degrees clockwise from north (default: `315`) |
+| `-altitude <value>` | Height of the light source above the horizon, 0-90 degrees (default: `45`) |
+| `-type <type>` | Curvature type: `general` (default), `profile` (along the slope) or `planform` (across the slope) |
+
+**EXAMPLES**
+
+```
+spatial_terrain dem.asc slope.asc -operation slope
+spatial_terrain dem.asc slope_pct.asc -operation slope -units percent
+spatial_terrain dem.asc aspect.asc -operation aspect
+spatial_terrain dem.asc hillshade.asc -operation hillshade -azimuth 315 -altitude 45
+spatial_terrain dem.asc profile.asc -operation curvature -type profile
+```
+
+For the 3x3 window `52 50 48 / 54 51 47 / 56 52 46` with a 10 m cell size, the center cell has a slope of 19.69° (35.79 %) and an aspect of 77.9° (east-northeast).
+
+**SEE ALSO**
+
+[spatial_vectorize](#spatial_vectorize), [spatial_reclass](#spatial_reclass), [spatial_calc](#spatial_calc)
+
+---
+
+## spatial_hydrology
+
+**NAME**
+
+`spatial_hydrology` — fill sinks, flow direction, flow accumulation and watersheds from a DEM
+
+**SYNOPSIS**
+
+```
+spatial_hydrology <input.asc> <output.asc> -operation <fill|flow_direction|flow_accumulation|watershed> [options]
+```
+
+**DESCRIPTION**
+
+Simulates how water moves over a digital elevation model (DEM). The operations are chained: each one takes the output of the previous one. The output has the same extent and cell size as the input.
+
+**OPERATIONS**
+
+| Operation | Input | Result |
+|---|---|---|
+| `fill` | DEM | DEM with every depression (sink) raised up to its spill elevation. Water leaves through the edge of the grid or through NODATA cells |
+| `flow_direction` | Filled DEM | D8 flow direction: each cell drains to the neighbor with the steepest descent (the drop divided by the distance, which is `sqrt(2)` times longer on the diagonals) |
+| `flow_accumulation` | Flow direction raster | Number of cells (or sum of weights) that drain through each cell, **including the cell itself**: the minimum value is 1, on ridges |
+| `watershed` | Flow direction raster | Watershed (drainage basin) of one or more pour points: every cell that drains to a pour point gets that point's number (1, 2, 3... in the order given); the rest is NODATA |
+
+Flow direction codes: `E=1`, `SE=2`, `S=4`, `SW=8`, `W=16`, `NW=32`, `N=64`, `NE=128`. The value `0` marks a cell with no flow: an outlet on the edge of the grid. Flat areas left by `fill` drain toward their spill point, so a filled DEM has no sinks. If a DEM that was not filled is used, the command warns about the interior cells that have no lower neighbor.
+
+A watershed is every cell upstream of its pour point, so its size in cells equals the flow accumulation at that cell. When several pour points are given, a cell belongs to the nearest pour point downstream of it (a point located upstream of another one keeps its own cells, and the lower basin gets the rest). The pour point is the center of the cell that contains the coordinates; it must lie inside the raster, on a valid (non-NODATA) cell, and two points cannot fall on the same cell. A pour point placed by hand rarely falls exactly on the stream: with `-snap_raster` and `-snap_distance` it is first moved to the cell with the highest flow accumulation within that distance.
+
+The drainage network is obtained by keeping the cells whose accumulation exceeds a threshold (`spatial_filter_raster`). The area that drains through a cell is its accumulation multiplied by the cell area.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-operation <op>` | `fill`, `flow_direction`, `flow_accumulation` or `watershed` (required) |
+| `-max_depth <value>` | Maximum depth to fill (`fill`; default: no limit). A depression is a group of connected cells that were raised; if its deepest cell exceeds this value, the whole depression is left unfilled |
+| `-method <d8>` | Flow direction algorithm (`flow_direction`; default: `d8`, the only one available) |
+| `-weights <file>` | Weights raster with the same grid as the flow direction raster (`flow_accumulation`; default: every cell weighs 1). A NODATA weight counts as 0 |
+| `-pour_point <x> <y>` | Outlet of a watershed in map coordinates (`watershed`; required, can be repeated) |
+| `-snap_raster <file>` | Flow accumulation raster with the same grid, used to snap each pour point to the cell of highest accumulation (`watershed`) |
+| `-snap_distance <d>` | Snap search distance in map units (`watershed`; default: 0, no snapping; needs `-snap_raster`) |
+| `-verbose` | Show detailed information |
+
+**EXAMPLES**
+
+```
+spatial_hydrology dem.asc dem_filled.asc -operation fill
+spatial_hydrology dem_filled.asc flowdir.asc -operation flow_direction
+spatial_hydrology flowdir.asc flowacc.asc -operation flow_accumulation
+spatial_filter_raster flowacc.asc streams.asc "value>100"
+spatial_hydrology flowdir.asc runoff.asc -operation flow_accumulation -weights rainfall.asc
+spatial_hydrology flowdir.asc basin.asc -operation watershed -pour_point 483200 1092500
+spatial_hydrology flowdir.asc basin.asc -operation watershed -pour_point 483200 1092500 -snap_raster flowacc.asc -snap_distance 90
+```
+
+**SEE ALSO**
+
+[spatial_terrain](#spatial_terrain), [spatial_filter_raster](#spatial_filter_raster), [spatial_vectorize](#spatial_vectorize), [spatial_cost](#spatial_cost)
+
+---
+
+## spatial_cost
+
+**NAME**
+
+`spatial_cost` — cost distance, least-cost corridor and viewshed
+
+**SYNOPSIS**
+
+```
+spatial_cost <input1> [input2] <output> -operation <cost|corridor|viewshed> [options]
+```
+
+**DESCRIPTION**
+
+Three analyses that move over a raster surface. The output has the same extent and cell size as the input.
+
+**OPERATIONS**
+
+| Operation | Input | Result |
+|---|---|---|
+| `cost` | Friction raster | Accumulated cost of the cheapest route from the nearest source to every cell (Dijkstra over the 8 neighbors). Moving between two adjacent cells costs the average of their friction values times the distance between their centers (the cell size, or the cell size times `sqrt(2)` on the diagonals). Friction must be `>= 0` (0 is allowed); NODATA cells are barriers. Sources cost 0. Cells that cannot be reached (or whose cost exceeds `-max_cost`) are NODATA |
+| `corridor` | Two accumulated cost rasters (from point A and from point B), same grid | Sum of both surfaces: the cost of the cheapest route A → B that passes through each cell. Cells whose sum is above the threshold are NODATA, so what remains is the band of near-optimal routes. The minimum of the sum is the cost of the least-cost route |
+| `viewshed` | DEM | Which cells can be seen from the observer(s). The line of sight goes from the observer cell center (elevation + `-obs_height`) to the center of each cell (elevation + `-target_height`); the terrain is sampled with bilinear interpolation every cell size along the line, and the cell is hidden if the terrain rises above the line (a line that only touches the terrain counts as visible). With one observer the value is 1 (visible) or 0 (hidden); with several it is the number of observers that see the cell. NODATA cells of the DEM stay NODATA and do not block the view |
+
+Typical workflow for a corridor: run `cost` twice, once from each end, and give both results to `corridor`. The observer and the sources are the centers of the cells that contain the given coordinates; they must lie inside the raster and on a valid cell.
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-operation <op>` | `cost`, `corridor` or `viewshed` (required) |
+| `-source <x> <y>` | Origin in map coordinates (`cost`; required, can be repeated: each cell gets the cost from its nearest source) |
+| `-max_cost <value>` | Maximum accumulated cost (`cost`; default: no limit) |
+| `-threshold <value>` | Largest total cost kept in the corridor, as an absolute value (`corridor`; default: the minimum total cost plus 10%). If it is below the minimum, the corridor is empty and a warning is printed |
+| `-observer <x> <y>` | Observer in map coordinates (`viewshed`; required, can be repeated) |
+| `-obs_height <value>` | Observer height above the terrain (`viewshed`; default: 1.7) |
+| `-target_height <value>` | Height above the terrain of what is looked at, e.g. a tower or a billboard (`viewshed`; default: 0) |
+| `-radius <value>` | Maximum analysis radius in map units (`viewshed`; default: no limit). Cells farther than the radius from every observer are NODATA |
+| `-curvature` | Correct for the curvature of the Earth and for atmospheric refraction (`viewshed`): the terrain drops `(1 - k) d² / (2R)` at distance `d`, with `R = 6371000 m` and `k = 0.13`. It assumes that map units and elevations are meters, so use a projected CRS (CRTM05, UTM) |
+
+The elevations and the cell size are used as they are, so for a geographic (degrees) DEM the distances of `-radius`, `-curvature` and the slope of the lines of sight are not in meters: reproject the DEM first (see `spatial_reproject` and `spatial_resample`).
+
+**EXAMPLES**
+
+```
+spatial_cost friction.asc cost_a.asc -operation cost -source 483200 1092500
+spatial_cost friction.asc cost_b.asc -operation cost -source 487900 1090100
+spatial_cost cost_a.asc cost_b.asc corridor.asc -operation corridor
+spatial_cost cost_a.asc cost_b.asc corridor.asc -operation corridor -threshold 1500
+spatial_cost dem.asc viewshed.asc -operation viewshed -observer 483200 1092500 -radius 5000
+spatial_cost dem.asc viewshed.asc -operation viewshed -observer 483200 1092500 -obs_height 12 -target_height 2 -curvature
+```
+
+**SEE ALSO**
+
+[spatial_terrain](#spatial_terrain), [spatial_hydrology](#spatial_hydrology), [spatial_reclass](#spatial_reclass)
+
+---
+
 ## spatial_reclass
 
 **NAME**

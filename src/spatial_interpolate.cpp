@@ -14,6 +14,7 @@
 
 #include "../include/core/ascii_grid.hpp"
 #include "../include/core/spatial_csv.hpp"
+#include "../include/core/spatial_delaunay.hpp"
 #include "../include/core/spatial_io.hpp"
 #include "../include/core/spatial_string.hpp"
 #include "../include/core/spatial_types.hpp"
@@ -253,34 +254,51 @@ double interpolateIDWNeighbors(double x, double y, const std::vector<Point2D>& p
   return numerator / denominator;
 }
 
-double interpolateLinear(double x, double y, const std::vector<Point2D>& points) {
-  std::vector<std::pair<double, Point2D>> dist_points;
-  for (const auto& p : points) {
-    double dist = p.distanceTo2D(Point2D(x, y));
-    dist_points.push_back({dist, p});
+// Linear interpolation on a TIN: Delaunay triangulation of the points, and inside each
+// triangle the value is the barycentric combination of the values at its three vertices
+// (a plane through the three points). The surface passes through every sample and is
+// continuous, but it is only defined inside the convex hull of the points: outside it
+// the result is NaN (NODATA). Points with identical coordinates are merged (mean value).
+struct TINModel {
+  Spatial::Delaunay dt;
+  std::vector<double> z;
+
+  bool fit(const std::vector<Point2D>& points) {
+    std::vector<size_t> idx(points.size());
+    for (size_t i = 0; i < idx.size(); ++i) idx[i] = i;
+    std::sort(idx.begin(), idx.end(), [&](size_t a, size_t b) {
+      if (points[a].x != points[b].x) return points[a].x < points[b].x;
+      return points[a].y < points[b].y;
+    });
+    std::vector<double> xs, ys, sum;
+    std::vector<int> count;
+    for (size_t k : idx) {
+      if (!xs.empty() && xs.back() == points[k].x && ys.back() == points[k].y) {
+        sum.back() += points[k].z;
+        count.back() += 1;
+      } else {
+        xs.push_back(points[k].x);
+        ys.push_back(points[k].y);
+        sum.push_back(points[k].z);
+        count.push_back(1);
+      }
+    }
+    z.resize(sum.size());
+    for (size_t i = 0; i < sum.size(); ++i) z[i] = sum[i] / count[i];
+    distinct = xs.size();
+    return dt.build(xs, ys);
   }
 
-  std::sort(dist_points.begin(), dist_points.end(),
-            [](const auto& a, const auto& b) { return a.first < b.first; });
-
-  if (dist_points.size() < 3) {
-    return dist_points[0].second.z;
+  double eval(double x, double y) const {
+    std::array<int, 3> v;
+    double l0, l1, l2;
+    if (!dt.locate(x, y, v, l0, l1, l2))
+      return std::numeric_limits<double>::quiet_NaN();
+    return l0 * z[v[0]] + l1 * z[v[1]] + l2 * z[v[2]];
   }
 
-  Point2D p1 = dist_points[0].second;
-  Point2D p2 = dist_points[1].second;
-  Point2D p3 = dist_points[2].second;
-
-  double d1 = p1.distanceTo2D(Point2D(x, y));
-  double d2 = p2.distanceTo2D(Point2D(x, y));
-  double d3 = p3.distanceTo2D(Point2D(x, y));
-  double sum_d = d1 + d2 + d3;
-
-  if (sum_d < 1e-12)
-    return p1.z;
-
-  return (d1 * p1.z + d2 * p2.z + d3 * p3.z) / sum_d;
-}
+  size_t distinct = 0;
+};
 
 double interpolateKriging(double x, double y, const std::vector<Point2D>& points) {
   return interpolateIDWNeighbors(x, y, points, 8, 1.5);
@@ -481,11 +499,11 @@ std::string methodToString(InterpMethod method) {
     case IDW_NEIGHBORS:
       return "IDW with Neighbor Search";
     case LINEAR:
-      return "Linear Interpolation";
+      return "Linear (TIN: Delaunay triangulation)";
     case KRIGING:
-      return "Kriging (simplified)";
+      return "Kriging (simplified: IDW of the 8 nearest points, power 1.5)";
     case NATURAL_NEIGHBOR:
-      return "Natural Neighbor";
+      return "Natural Neighbor (simplified: IDW of the 10 nearest points)";
     case RBF:
       return "RBF (Radial Basis Function)";
     default:
@@ -495,7 +513,8 @@ std::string methodToString(InterpMethod method) {
 
 void interpolateGrid(const std::vector<Point2D>& points, Spatial::RasterDataset& output,
                      InterpMethod method, double power = 2.0, int n_neighbors = 12,
-                     double radius = 0, const RBFModel* rbf = nullptr) {
+                     double radius = 0, const RBFModel* rbf = nullptr,
+                     const TINModel* tin = nullptr) {
   int nrows = output.nrows;
   int ncols = output.ncols;
   double cellsize = output.cellsize;
@@ -530,7 +549,7 @@ void interpolateGrid(const std::vector<Point2D>& points, Spatial::RasterDataset&
           value = interpolateIDWNeighbors(x, y, points, n_neighbors, power, radius);
           break;
         case LINEAR:
-          value = interpolateLinear(x, y, points);
+          value = tin ? tin->eval(x, y) : std::numeric_limits<double>::quiet_NaN();
           break;
         case KRIGING:
           value = interpolateKriging(x, y, points);
@@ -593,6 +612,19 @@ void crossValidate(const std::vector<Point2D>& points, InterpMethod method, doub
         predicted = m.eval(points[i].x, points[i].y);
         break;
       }
+      case LINEAR: {
+        // Without the left-out point: points on the convex hull cannot be predicted (NaN)
+        TINModel tin;
+        predicted = tin.fit(train) ? tin.eval(points[i].x, points[i].y)
+                                   : std::numeric_limits<double>::quiet_NaN();
+        break;
+      }
+      case KRIGING:
+        predicted = interpolateKriging(points[i].x, points[i].y, train);
+        break;
+      case NATURAL_NEIGHBOR:
+        predicted = interpolateNaturalNeighbor(points[i].x, points[i].y, train);
+        break;
       default:
         predicted = interpolateIDW(points[i].x, points[i].y, train, power);
         break;
@@ -631,7 +663,12 @@ void printUsage() {
   std::cerr << "  -method <method>   Interpolation method:\n";
   std::cerr << "                     nearest (nn), idw, idw_power (idwp), idw_neighbors (idwn),\n";
   std::cerr << "                     linear (lin), kriging (krig), natural (nat), rbf\n";
-  std::cerr << "                     (default: idw)\n\n";
+  std::cerr << "                     (default: idw)\n";
+  std::cerr << "                     linear   = TIN: Delaunay triangulation, planar in each triangle;\n";
+  std::cerr << "                                only defined inside the convex hull of the points\n";
+  std::cerr << "                                (NODATA outside); needs >= 3 non-collinear points\n";
+  std::cerr << "                     natural, kriging = simplified: IDW over the 10 / 8 nearest points\n";
+  std::cerr << "                                (no Voronoi areas, no variogram)\n\n";
   std::cerr << "Options:\n";
   std::cerr << "  -power <value>     Power for IDW (default: 2.0)\n";
   std::cerr << "  -neighbors <n>     Number of neighbors for IDW (default: 12).\n";
@@ -850,7 +887,29 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  interpolateGrid(points, output, method, power, n_neighbors, radius, &rbf_model);
+  TINModel tin_model;
+  if (method == LINEAR) {
+    if (!tin_model.fit(points)) {
+      std::cerr << "Error: -method linear needs at least 3 distinct points that are not all on one line "
+                   "(it triangulates the points)\n";
+      return 1;
+    }
+    std::cout << "TIN: " << tin_model.dt.numTriangles() << " triangles from " << tin_model.distinct
+              << " distinct points";
+    if (tin_model.distinct != points.size())
+      std::cout << " (" << points.size() - tin_model.distinct << " duplicated points merged)";
+    std::cout << "\n";
+  }
+
+  interpolateGrid(points, output, method, power, n_neighbors, radius, &rbf_model, &tin_model);
+
+  if (method == LINEAR) {
+    size_t outside = 0;
+    for (double v : output.data)
+      if (v == nodata) ++outside;
+    std::cout << "Cells outside the convex hull of the points (NODATA): " << outside << " of "
+              << output.data.size() << "\n";
+  }
 
   if (cross_validate) {
     crossValidate(points, method, power, n_neighbors, radius, rbf_func, sigma);

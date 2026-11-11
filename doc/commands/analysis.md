@@ -246,6 +246,15 @@ Builds a continuous raster surface from points with known values, using a choice
 
 `-method <method>`: `nearest`, `idw`, `idw_power`, `idw_neighbors`, `linear`, `kriging`, `natural`, `rbf` (default: `idw`)
 
+| Method | What it computes |
+|---|---|
+| `nearest` | Value of the nearest sample |
+| `idw`, `idw_power`, `idw_neighbors` | Inverse distance weighting (weight `1/d^power`) over all the samples, or over the `-neighbors` nearest ones |
+| `linear` | **TIN**: Delaunay triangulation of the samples; inside each triangle the value is the plane through its three vertices (barycentric interpolation). The surface is continuous and passes through every sample, but it exists only **inside the convex hull** of the samples: cells outside it are NODATA (the command reports how many). It needs at least 3 distinct samples that are not all collinear; samples with identical coordinates are merged (mean value). `-power`, `-neighbors` and `-radius` are ignored |
+| `rbf` | Radial basis functions (`-function`, `-sigma`) |
+| `natural` | **Simplified**: IDW over the 10 nearest samples with power 1 (it does not compute Voronoi/Sibson areas) |
+| `kriging` | **Simplified**: IDW over the 8 nearest samples with power 1.5 (it does not fit a variogram) |
+
 **OPTIONS**
 
 | Option | Description |
@@ -256,13 +265,14 @@ Builds a continuous raster surface from points with known values, using a choice
 | `-sigma <value>` | Sigma for RBF (default: `1.0`) |
 | `-bbox <minx> <miny> <maxx> <maxy>` | Output extent |
 | `-nodata <value>` | NODATA value (default: `-9999`) |
-| `-cross_validate` | Perform leave-one-out cross-validation |
+| `-cross_validate` | Perform leave-one-out cross-validation with the selected method (MAE and RMSE). With `linear`, a sample on the convex hull of the others cannot be predicted and is skipped; the report says how many were evaluated |
 | `-verbose` | Show detailed information |
 
 **EXAMPLES**
 
 ```
 spatial_interpolate points.csv surface.asc -attribute value -method idw -cellsize 0.01
+spatial_interpolate points.csv surface.asc -attribute value -method linear -cellsize 0.01
 spatial_interpolate points.csv surface.asc -attribute value -method nearest -cellsize 0.01
 spatial_interpolate points.csv surface.asc -attribute value -method idw_power -power 3 -cellsize 0.01
 spatial_interpolate points.csv surface.asc -attribute value -method idw_neighbors -neighbors 8 -cellsize 0.01
@@ -270,7 +280,63 @@ spatial_interpolate points.csv surface.asc -attribute value -method idw_neighbor
 
 **SEE ALSO**
 
-[spatial_rasterize](raster.md#spatial_rasterize), [spatial_statistics](#spatial_statistics)
+[spatial_rasterize](raster.md#spatial_rasterize), [spatial_statistics](#spatial_statistics), [spatial_tin](#spatial_tin)
+
+---
+
+## spatial_tin
+
+**NAME**
+
+`spatial_tin` — triangulated irregular network (TIN) from elevation points
+
+**SYNOPSIS**
+
+```
+spatial_tin <input.csv> <output.csv> -attribute <col> -operation <build|topology|terrain|volume|elevation> [options]
+```
+
+**DESCRIPTION**
+
+Triangulates a point layer with the Delaunay criterion and works on the resulting TIN. The input is a spatial CSV with a `POINT` geometry (or a CSV with `x`/`y` columns) and `-attribute` names the column with the elevation. The TIN covers the convex hull of the points. Points with the same `x`, `y` are merged (mean elevation) and the command reports it. Inside each triangle the surface is the plane through its three nodes, which is the same surface that `spatial_interpolate -method linear` evaluates on a grid. The nodes are numbered in the order in which they appear in the input (after merging); the triangles are numbered from 1, each starting at its smallest node and sorted by nodes. The coordinate reference system comment (`# CRS:`) of the input is kept in the polygon outputs.
+
+It needs at least 3 distinct points that are not all on one line. It does not support breaklines or holes: the triangulation depends only on the points.
+
+**OPERATIONS**
+
+| Operation | Output |
+|---|---|
+| `build` | Spatial CSV with one `POLYGON` per triangle: `id`, `node1..3`, `z1..3`, `centroid_x`, `centroid_y`, `centroid_z` (elevation at the centroid: the mean of the three), `area_2d` |
+| `topology` | Plain CSV (no geometry): `triangle`, `node1..3` and `neighbor1..3`. `neighborN` is the triangle across the edge opposite `nodeN`; `0` means the edge is on the border of the TIN |
+| `terrain` | Spatial CSV with one `POLYGON` per triangle: `mean_z`, `area_2d`, `area_3d` (surface area), `slope_deg`, `slope_pct` and `aspect`. The aspect is the direction the face looks at (the steepest descent), in degrees clockwise from north; `-1` for a flat triangle. The command also prints the 3D area and the mean slope weighted by area |
+| `volume` | Cut and fill against the horizontal plane `z = <level>`, per triangle (`cut`, `fill`) and in total. Cut is the volume of terrain above the plane (material to remove) and fill the volume below it (material to add); both are exact, the triangles that cross the plane are split. The totals, net volume and the plan area above and below the plane are printed and written as comments in the file |
+| `elevation` | Spatial CSV with one `POINT` per `-point`: `id`, `x`, `y`, `triangle` (the one that contains the point; `0` if the point is outside the TIN), `a`, `b`, `c` (the plane of that triangle, `z = a*x + b*y + c`) and `z`. A point on an edge or a node takes the value of the surface there. The command prints the equation of each plane |
+
+**OPTIONS**
+
+| Option | Description |
+|---|---|
+| `-attribute <col>` | Column with the elevation (required; an error if it does not exist) |
+| `-operation <op>` | `build`, `topology`, `terrain`, `volume` or `elevation` (required) |
+| `-level <z>` | Elevation of the reference plane (`volume`; required) |
+| `-point <x> <y>` | Point where the elevation is computed (`elevation`; required, can be repeated). A point outside the convex hull has no elevation and a warning is printed |
+| `-nodes <file>` | Also write the nodes as a spatial CSV with `POINT` geometry: `id`, `z`, `degree` (number of edges), `on_hull` (1 if on the border) and `adjacent_nodes` (separated by `;`) |
+| `-verbose` | Also print the Euler check (nodes − edges + triangles = 1) |
+
+**EXAMPLES**
+
+```
+spatial_tin points.csv tin.csv -attribute elevation -operation build
+spatial_tin points.csv topology.csv -attribute elevation -operation topology -nodes nodes.csv
+spatial_tin points.csv faces.csv -attribute elevation -operation terrain
+spatial_tin points.csv cutfill.csv -attribute elevation -operation volume -level 1250
+spatial_tin points.csv p.csv -attribute elevation -operation elevation -point 481250 1090400 -point 481300 1090420
+spatial_csv2geo tin.csv tin.geojson -crs EPSG:5367
+```
+
+**SEE ALSO**
+
+[spatial_interpolate](#spatial_interpolate), [spatial_terrain](raster.md#spatial_terrain), [spatial_vectorize](raster.md#spatial_vectorize)
 
 ---
 

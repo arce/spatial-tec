@@ -136,6 +136,10 @@ CONSOLE_PROGRAMS := \
     spatial_query \
     spatial_join \
     spatial_resample \
+    spatial_terrain \
+    spatial_hydrology \
+    spatial_cost \
+    spatial_tin \
     spatial_statistics \
     spatial_difference \
     spatial_simplify \
@@ -164,54 +168,29 @@ CONSOLE_PROGRAMS := \
     spatial_interpolate \
     spatial_zonal \
     spatial_reproject
-# Comandos "cascaron" (placeholder): analizan sus argumentos igual que el
-# resto del proyecto pero todavia no implementan la funcionalidad real (ver
-# cada archivo fuente y doc/commands/ para el detalle). Se agregaron a partir
-# de la revision de practicas/, que asumia que ya existian. Se agrupan aparte
-# de CONSOLE_PROGRAMS solo para que quede claro en el Makefile cuales de los
-# binarios que produce `make` son estables y cuales son cascarones; en el
-# build no hay ninguna diferencia de tratamiento entre ambos grupos.
+# Historia: varios comandos nacieron como "cascarones" (placeholder) que
+# analizaban sus argumentos pero todavia no calculaban nada, a partir de la
+# revision de practicas/, que asumia que ya existian. Todos tienen ya
+# funcionalidad real y viven en CONSOLE_PROGRAMS; actualmente no queda ningun
+# cascaron. Detalle de uso de cada uno en doc/commands/.
 #
-# spatial_calc_vector, spatial_reclass, spatial_rat y spatial_validate se
-# movieron de esta lista a CONSOLE_PROGRAMS (arriba): son los 4 comandos
-# cascaron que resultaron ser requeridos por los tutoriales 1-3 del manual,
-# y ya tienen funcionalidad real implementada.
+# Los ultimos en implementarse fueron los del modelado de superficies
+# (Tutorial 12): spatial_terrain (pendiente, orientacion, sombreado, curvatura),
+# spatial_hydrology (rellenar sumideros, direccion de flujo D8, acumulacion de
+# flujo que cuenta la propia celda, cuencas) y spatial_cost (costo acumulado,
+# corredor de menor costo, cuenca visual). Ver doc/commands/raster.md.
 #
-# spatial_reproject tambien se movio: convierte coordenadas de vector entre
-# WGS84 geografico, CRTM05 (EPSG:5367, el sistema oficial de Costa Rica) y
-# UTM zonas 16N/17N (EPSG:32616/32617), ademas de Web Mercator (EPSG:3857,
-# usado por OpenStreetMap/Google Maps) -- ver include/core/spatial_projection.hpp
-# para las formulas (serie de Snyder para las proyecciones Transversa de
-# Mercator, sin dependencia de PROJ/GDAL) y doc/commands/projection.md para
-# el detalle de uso.
+# spatial_tin triangula puntos de elevacion (Delaunay, include/core/spatial_delaunay.hpp,
+# la misma triangulacion que usa spatial_interpolate -method linear) y entrega los
+# triangulos, su topologia, pendiente/orientacion y volumenes de corte y relleno.
+# Ver doc/commands/analysis.md.
 #
-# spatial_lrs_info tambien se movio: lee el .lrs y reporta estadisticas por
-# ruta (vertices, longitud, rango de medidas, bounding box), y con -validate
-# detecta huecos/traslapes/medidas fuera de rango (ver doc/commands/network.md).
-#
-# spatial_address_validate y spatial_reverse_geocode tambien se movieron
-# (Tutorial 16, geocodificacion): comparten include/core/spatial_streets.hpp con
-# spatial_address -- lectura de la capa de calles, interpolacion de numeros de
-# casa y similitud de nombres.
-#
-# spatial_network_info y spatial_network_service tambien se movieron: ya
-# funcionan sobre el formato .network de spatial_network (version 2, nodos y
-# aristas; logica comun en include/core/spatial_network.hpp). Informacion y
-# validacion de conectividad; areas de servicio (-mode alloc) e isocronas
-# (-mode iso). Ver doc/commands/network.md.
-#
-# Los 3 restantes no son uno por cada operacion imaginable: donde varias
-# operaciones son variantes cercanas de la misma tarea, comparten un solo
-# binario con un flag -operation/-mode, exactamente como ya hacen
+# Donde varias operaciones son variantes cercanas de la misma tarea, comparten
+# un solo binario con un flag -operation/-mode, exactamente como ya hacen
 # spatial_vectorize (-contour/-polygonize/-points), spatial_distance
 # (-matrix/-point/-nearest/-self) y spatial_merge_raster
 # (-method first/last/min/max/average/sum) en el resto del proyecto -- en
 # vez de un binario nuevo por variante.
-STUB_PROGRAMS := \
-    spatial_terrain \
-    spatial_hydrology \
-    spatial_cost
-CONSOLE_PROGRAMS += $(STUB_PROGRAMS)
 ALL_PROGRAMS := $(CONSOLE_PROGRAMS) spatial_viewer spatial_georeference spatial_editor
 .PHONY: all clean windows linux linux-mac mac macArm macIntel help $(ALL_PROGRAMS)
 all: $(ALL_PROGRAMS)
@@ -464,6 +443,10 @@ help:
 	@echo "  spatial_query            - Perform spatial queries (filtering)"
 	@echo "  spatial_join             - Perform spatial joins (attribute transfer)"
 	@echo "  spatial_resample         - Change resolution of rasters"
+	@echo "  spatial_terrain          - Terrain analysis from a DEM: -operation slope|aspect|hillshade|curvature"
+	@echo "  spatial_hydrology        - DEM hydrology: -operation fill|flow_direction|flow_accumulation|watershed"
+	@echo "  spatial_cost             - Cost distance, least-cost corridor and viewshed: -operation cost|corridor|viewshed"
+	@echo "  spatial_tin              - TIN from elevation points: -operation build|topology|terrain|volume|elevation"
 	@echo "  spatial_statistics       - Calculate spatial statistics"
 	@echo "  spatial_difference       - Find features in one dataset not in another"
 	@echo "  spatial_simplify         - Simplify lines/polygons (Douglas-Peucker, Visvalingam, radial, n-th)"
@@ -501,11 +484,6 @@ help:
 	@echo "  spatial_lrs_calibrate    - Calibrate LRS measures with points of known measure (e.g. km posts)"
 	@echo "  spatial_lrs_info         - LRS network information (routes, lengths, M-ranges), optionally -validate"
 	@echo "  spatial_reproject        - Convert vector coordinates between CRS: -from/-to wgs84|crtm05|utm16n|utm17n|webmercator"
-	@echo ""
-	@echo "Placeholder commands (accept documented arguments, not yet implemented):"
-	@echo "  spatial_terrain            - Terrain analysis: -operation slope|aspect|hillshade|curvature"
-	@echo "  spatial_hydrology          - DEM conditioning: -operation fill|flow_direction|flow_accumulation"
-	@echo "  spatial_cost               - Cost-distance analysis: -operation cost|viewshed|corridor"
 	@echo ""
 	@echo "Cross-platform build targets: make linux | mac | macArm | macIntel | windows"
 .PHONY: all clean test help
